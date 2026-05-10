@@ -24,8 +24,17 @@ contribution of an in-progress PhD proposal.
 
 This release — **Run 4** — is the best stable checkpoint as of May 2026 and
 is shared as a clean baseline. It is honest about which parameters work and
-which still need work; see *Performance* below. A follow-on **Run 8** is
-planned to push the weaker parameters into the GREEN band.
+which still need work; see *Performance* below.
+
+> **Why not Run 5+?** Between May 1 and May 10, 2026 we attempted to lift
+> Run 4's weaker parameters via 7+ architectural variants (Runs 5–8). None
+> durably improved on Run 4. A retrospective analysis (`POSTMORTEM_2026_05_10.md`
+> in the development repo) showed the composite-score ceiling around 0.49 is
+> a **data-physics limit, not architecture limit** — it matches the theoretical
+> maximum R² achievable from log P(k) at 2 redshifts with k_max = 4.5 h/Mpc.
+> Breaking it requires new INFORMATION (higher-k extension, multi-z N-body data,
+> BAO features, real survey integration), not new model components. That work
+> is deferred to future iterations.
 
 ## TL;DR
 
@@ -40,7 +49,7 @@ planned to push the weaker parameters into the GREEN band.
 | Training compute | NVIDIA B200 (192 GB), BF16, batch 4096, 60 epochs of Phase 4 fine-tune warm-started from Run 3 |
 | Training completed | 2026-04-14 |
 | Strict GREEN params | 2 / 8 (Om R²=0.907, s8 R²=0.911) |
-| ECE | 0.39 (loose; under-calibrated, planned post-hoc temperature scaling in Run 8) |
+| ECE | 0.39 (loose; under-calibrated, planned post-hoc temperature scaling in future) |
 
 ## Performance
 
@@ -66,7 +75,10 @@ top-tier params (Om, s8, h, w0), R² >= 0.80 for the rest.
 
 **Strict GREEN count: 2 / 8** (Om, s8).
 A looser ship-readiness definition that counts h GREEN at R² >= 0.55 yields
-**3 / 8**. The 5 / 8 GREEN target is a Run 8 goal, NOT achieved by Run 4.
+**3 / 8** (colloquial threshold) or **2 / 8** (strict threshold per the
+project's EVOLUTION_ROADMAP, which targets ≥ 0.90 for Om/s8/h/w0 and ≥ 0.80
+for ns/Ob/mv/wa). The 5/8 strict GREEN target is **not reachable from P(k)
+at 2 redshifts** — it requires data extensions documented in *Limitations*.
 
 ## Intended use
 
@@ -148,9 +160,13 @@ MLPs with GELU + LayerNorm.
   inversion, not a fully end-to-end likelihood.
 - Performance on h, ns, Ob, w0, mv, wa is below paper-quality target. Do
   not use this release for science-quality constraints on those parameters.
+  These reflect the **theoretical R² ceiling from P(k) at 2 redshifts in
+  k ∈ [0.1, 4.5] h/Mpc** (verified empirically across 7+ architectural variants
+  May 1–10, 2026). Improving them requires data extensions (higher k, more
+  redshifts, BAO features), not architecture changes.
 - The model's uncertainty heads are trained with NLL but not separately
-  calibrated; ECE is loose (0.39). Post-hoc temperature scaling is on the
-  Run 8 roadmap.
+  calibrated; ECE is loose (0.39). Post-hoc temperature scaling planned for
+  future iteration.
 - Training data leans heavily on emulators (BACCO, SPk, BCemu, DarkEmulator)
   rather than direct N-body; any systematic in those emulators is inherited.
 

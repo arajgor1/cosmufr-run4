@@ -12,8 +12,11 @@ learned energy heads, then reads cosmology parameters off the settled belief.
 The architecture and the energy-based settling procedure are the
 research-novelty contribution of an in-progress PhD proposal — this Run 4
 release is the best stable checkpoint to date and is shared as a clean,
-honest baseline. A follow-on Run 8 release is planned to push the weaker
-parameters into the GREEN band.
+honest baseline. Subsequent attempts (Runs 5–8, May 1–10 2026) found the
+weaker parameter R²s are bounded by a **data-physics ceiling** — the
+theoretical maximum from log P(k) at 2 redshifts in k ∈ [0.1, 4.5] h/Mpc
+matches the observed composite ceiling around 0.49. Breaking it requires
+new data (higher k, more redshifts, BAO features), not new architecture.
 
 ## Quick start
 
@@ -71,8 +74,10 @@ for the rest).
 
 **Strict GREEN count: 2/8** (Om, s8). A looser ship-readiness definition
 (h GREEN at R² >= 0.55) brings this to 3/8. ECE = 0.39 — calibration is
-known to be loose and is being addressed via post-hoc temperature scaling
-in the planned Run 8 release.
+known to be loose; post-hoc temperature scaling is on the roadmap. The
+weaker-param R²s are at the **theoretical ceiling for P(k) at 2 redshifts**
+(verified empirically across 7 architectural variants, May 2026); breaking
+them requires data extensions documented in the development repo.
 
 The exact numbers above come from the checkpoint metadata
 (`epoch_30_metrics`, Phase 4) and are reproduced on the Run 4 val set.
