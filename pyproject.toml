@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cosmufr"
-version = "1.0.0"
-description = "CosmUFR Run 4: 137M-parameter belief-settling neural network for cosmological parameter inference from matter power spectra."
+version = "2.0.0"
+description = "CosmUFR Run 4: a 136M-parameter belief-settling network for cosmological parameter inference from matter power spectra, released with a reproducible benchmark and an audit of its training defects."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -40,6 +40,11 @@ dev = [
 [project.urls]
 Homepage     = "https://github.com/arajgor1/cosmufr-run4"
 "Model Card" = "https://huggingface.co/arajgor1/cosmufr-run4"
+
+[tool.pytest.ini_options]
+markers = [
+    "slow: evaluation over the full bundled benchmark (~1-2 min on CPU)",
+]
 
 [tool.setuptools.packages.find]
 include = ["cosmufr*"]

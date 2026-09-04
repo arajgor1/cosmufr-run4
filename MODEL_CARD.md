@@ -1,214 +1,131 @@
 ---
 license: mit
+library_name: pytorch
 tags:
   - cosmology
-  - astronomy
-  - emulator
+  - astrophysics
+  - scientific-ml
+  - parameter-inference
   - power-spectrum
-  - belief-state
-  - ufr
-  - inverse-problem
-pipeline_tag: other
-library_name: pytorch
+pipeline_tag: tabular-regression
 ---
 
 # CosmUFR Run 4
 
-CosmUFR is a 136M-parameter neural network that infers all 8 cosmological
-parameters from the matter power spectrum P(k) measured at two redshifts
-(z=0, z=0.47). Instead of a transformer, the network refines a 1024-dim
-**belief** vector through 16 steps of **energy gradient descent**
-("settling") guided by three learned energy heads, then reads cosmology
-parameters off the settled belief. This is the architectural-novelty
-contribution of an in-progress PhD proposal.
+**A 136M-parameter belief-settling network that infers eight cosmological parameters from the matter power spectrum, released together with an audit of its own training defects.**
 
-This release — **Run 4** — is the best stable checkpoint as of May 2026 and
-is shared as a clean baseline. It is honest about which parameters work and
-which still need work; see *Performance* below.
+- Code and reproduction: https://github.com/arajgor1/cosmufr-run4
+- Checkpoint SHA256: `5db09d4ff02316c60a43e08fa242223d3243f4f224b625798eaf385151150fc1`
 
-> **Why not Run 5+?** Between May 1 and May 10, 2026 we attempted to lift
-> Run 4's weaker parameters via 7+ architectural variants (Runs 5–8). None
-> durably improved on Run 4. A retrospective analysis (`POSTMORTEM_2026_05_10.md`
-> in the development repo) showed the composite-score ceiling around 0.49 is
-> a **data-physics limit, not architecture limit** — it matches the theoretical
-> maximum R² achievable from log P(k) at 2 redshifts with k_max = 4.5 h/Mpc.
-> Breaking it requires new INFORMATION (higher-k extension, multi-z N-body data,
-> BAO features, real survey integration), not new model components. That work
-> is deferred to future iterations.
+> **Read this first.** The belief-settling core that gives this architecture its name never received a gradient during training. It sits at initialization. What learned is the set of read-out heads, which learn to read a fixed random projection of the input. Numbers below are measured on that basis and are reproducible from this repository. Earlier published figures for this model (Ω_m 0.907, σ₈ 0.911, h 0.604) are superseded and should not be cited.
 
-## TL;DR
+---
 
-| Field | Value |
+## Model details
+
+| | |
 |---|---|
-| Architecture | Belief-settling MLP with 16-step energy GD; no attention |
-| Parameters | 136.2M (inference graph; ~137M including pretraining halo head) |
-| Inputs | log10 P(k) at z=0 and z=0.47, 200 k-bins each (k in [0.1, 4.5] h/Mpc) |
-| Outputs | 8 cosmology params + 8 per-param 1-sigma uncertainties + reconstructed log10 P(k) at any queried k |
-| Parameters predicted | Om, s8, h, ns, Ob, w0, mv, wa |
-| Training data | 84.5M cosmology -> P(k) samples from 14 source suites (CAMB, CAMELS, BACCO, Quijote, BCemu, DarkEmulator, SPk, plus ns/w0/multi-z grids) |
-| Training compute | NVIDIA B200 (192 GB), BF16, batch 4096, 60 epochs of Phase 4 fine-tune warm-started from Run 3 |
-| Training completed | 2026-04-14 |
-| Strict GREEN params | 2 / 8 (Om R²=0.907, s8 R²=0.911) |
-| ECE | 0.39 (loose; under-calibrated, planned post-hoc temperature scaling in future) |
+| Developed by | Aaditya Rajgor |
+| Model type | Feed-forward energy-based parameter inference, no attention |
+| Parameters | 136,194,617 |
+| Inputs | `log10 P(k)`, 200 log-spaced k bins over k ∈ [0.1, 4.5] h/Mpc, at z = 0 and z = 0.47 |
+| Outputs | 8 cosmological parameters, 8 variances, k-continuous P(k) reconstruction |
+| Precision | float32 |
+| Latency | ~400 ms per spectrum on CPU |
+| Determinism | Bit-identical across repeated calls |
+| Checkpoint | epoch 30, phase 4, trained 2026-04-14 |
+| License | MIT |
 
-## Performance
-
-Evaluated on Run 4's own validation split — same metric definitions and
-data split used during training. Numbers are read directly from the
-checkpoint's stored `metrics` dict.
-
-Strict GREEN target follows the project's evolution roadmap: R² >= 0.90 for
-top-tier params (Om, s8, h, w0), R² >= 0.80 for the rest.
-
-| Param | RMSE   | R²    | Strict GREEN | Status |
-|-------|--------|-------|--------------|--------|
-| Om    | 0.0179 | 0.907 | >= 0.90 | GREEN |
-| s8    | 0.0228 | 0.911 | >= 0.90 | GREEN |
-| h     | 0.0330 | 0.604 | >= 0.90 | YELLOW (best Run 4-series result; +0.116 over Run 3) |
-| w0    | 0.0229 | 0.742 | >= 0.90 | YELLOW |
-| ns    | 0.0198 | 0.353 | >= 0.80 | YELLOW |
-| Ob    | 0.0040 | 0.406 | >= 0.80 | YELLOW |
-| mv    | 0.0963 | 0.410 | >= 0.80 | YELLOW |
-| wa    | 0.0520 | 0.187 | >= 0.80 | YELLOW |
-| ECE   | -      | -     | < 0.10 | RED — calibration is loose (0.39) |
-| pk_mse| -      | -     | informational | 0.687 (log-space MSE on val P(k)) |
-
-**Strict GREEN count: 2 / 8** (Om, s8).
-A looser ship-readiness definition that counts h GREEN at R² >= 0.55 yields
-**3 / 8** (colloquial threshold) or **2 / 8** (strict threshold per the
-project's EVOLUTION_ROADMAP, which targets ≥ 0.90 for Om/s8/h/w0 and ≥ 0.80
-for ns/Ob/mv/wa). The 5/8 strict GREEN target is **not reachable from P(k)
-at 2 redshifts** — it requires data extensions documented in *Limitations*.
+Parameters, in output order: Ω_m, σ₈, h, n_s, Ω_b, w₀, Σm_ν, w_a.
 
 ## Intended use
 
-- Sketching cosmological constraints from a measured / simulated matter
-  power spectrum at z=0 and z=0.47, on the standard 200-bin k-grid in
-  k = [0.1, 4.5] h/Mpc.
-- Quick-look inference where speed (one forward pass, ~seconds on CPU)
-  matters more than the precision of any individual parameter.
-- Demonstrating the belief-settling architecture for research /
-  pedagogical purposes.
+Research and teaching. Specifically:
 
-## Out of scope
+- A worked example of energy-based iterative inference applied to cosmology.
+- A case study in how a silent gradient-path defect survives months of training with plausible-looking loss curves, and how to detect one.
+- A baseline that a better-trained model can be compared against.
 
-- **High-precision constraints on h, ns, Ob, w0, mv, wa.** Their R² and
-  uncertainty bands are not yet at paper-quality.
-- **Inference at redshifts other than z=0 and z=0.47.** Multi-z
-  generalization was not validated for this release.
-- **Calibrated uncertainty intervals.** ECE = 0.39 means the 68%/95%
-  intervals are over-confident for several parameters.
-- **Inputs on a different k-grid.** The model expects 200 log-spaced bins
-  from k=0.1 to k=4.5 h/Mpc; resample your data accordingly.
+**Not for producing cosmological constraints.** The uncertainties are a constant, so nothing here supports error propagation or likelihood analysis.
 
-## Architecture
+## Results
 
-Forward pass:
+Measured on the deterministic validation split, 162,795 rows across 16 sources, using the released inference package. Full report: `reports/honest_eval.json`.
 
-1. **ObsEncoder** — log10 P(k) [400-d concat of two redshifts] -> z [1024-d]
-2. **BeliefProposal** — (z, b_prev) -> b_hat [1024-d] (residual update)
-3. **SettlingCore** — 16-step energy gradient descent on b, with a learned
-   per-step preconditioner P(b) and step size eta(b). The energy is
-   `l_obs * E_obs(b, z) + l_con * E_con(b) + l_dyn * E_dyn(b, b_prev)`,
-   where each E_* is its own MLP head.
-4. **Task heads** off the settled belief b_star:
-   - **ParameterHead** -> 8 cosmology params (sigmoid-clamped to physical priors)
-   - **UncertaintyHead** -> 8 variances (softplus + epsilon, trained with NLL)
-   - **GenerativeHead** -> implicit field that reconstructs log10 P(k) at any
-     queried k value (B, K -> mean, logvar)
-5. The **AttractorBank** (4096 prototype belief vectors, EMA-updated during
-   training) is included for compatibility with the training graph but is
-   inactive at inference.
+| Parameter | Full validation R² | R² where it varies | RMSE |
+|---|---|---|---|
+| Ω_m | 0.717 | 0.720 | 0.0273 |
+| σ₈ | 0.756 | 0.757 | 0.0285 |
+| h | 0.501 | 0.498 | 0.0402 |
+| w₀ | 0.586 | 0.614 | 0.0254 |
+| Ω_b | 0.364 | 0.363 | 0.0045 |
+| n_s | 0.338 | 0.339 | 0.0214 |
+| w_a | 0.165 | 0.185 | 0.0616 |
+| Σm_ν | 0.407 | **0.011** | 0.0993 |
 
-There is no attention, no MoE, no transformer. All blocks are residual
-MLPs with GELU + LayerNorm.
+R² is a ratio against the variance of the truth, so on a slice where a parameter is held at a fiducial constant it measures nothing. The second column restricts each parameter to the sources that actually vary it. For Σm_ν this is decisive: the apparent 0.41 is an artifact of Σm_ν being pinned at zero across most of the training corpus, where predicting near-zero scores well without recovering anything. **This model does not constrain neutrino mass.**
+
+### Per-source breakdown
+
+The aggregate understates performance on sound data and overstates it on defective data. Both are shown.
+
+| Source | n | Ω_m | σ₈ | h | n_s | Ω_b |
+|---|---|---|---|---|---|---|
+| bacco | 23,997 | 0.99 | 0.99 | 0.68 | 0.58 | 0.36 |
+| bcemu | 23,997 | 0.99 | 0.74 | 0.75 | 0.25 | 0.72 |
+| spk | 23,997 | 0.98 | 0.98 | 0.66 | 0.66 | 0.35 |
+| bacco_neutrino | 23,997 | 0.99 | 0.99 | 0.67 | 0.58 | 0.31 |
+| bacco_full8 | 23,997 | 0.99 | 0.99 | 0.63 | 0.24 | 0.34 |
+| **bacco_multiz** | 23,997 | -0.00 | -0.00 | -0.00 | -0.00 | 0.00 |
+| dark_emulator | 5,001 | 0.87 | 0.93 | -- | 0.30 | -- |
+| camb_nl | 1,000 | 0.98 | 0.99 | -- | -- | -- |
+
+`bacco_multiz` is 15 percent of the validation set and scores zero on everything, because its z=0.47 spectra are self-paired copies of its z=0 spectra and carry no growth information. That is a data-generation defect. `--` marks parameters pinned in that source, where R² is undefined.
+
+## Reproducing these numbers
+
+```bash
+git clone https://github.com/arajgor1/cosmufr-run4
+cd cosmufr-run4
+pip install -e ".[demo]"
+python -m cosmufr.reproduce
+```
+
+The 6,000-row benchmark ships in the repository and alongside these weights as `cosmufr_benchmark.npz`. On a clean machine the reproduction matches the published table to within 1e-6.
+
+## Limitations and known defects
+
+1. **The belief pipeline never trained.** `obs_encoder`, `belief_proposal` and `settling` are at initialization; 84 Linear biases are still bit-exactly zero after forty epochs. Confirmed independently by comparing the Run 2 and Run 4 checkpoints, where 204 of 204 tensors in those modules are bit-identical while the read-out heads moved 66 to 79 percent. Root cause is an unconditional `detach()` in the settling loop. Verify with `cosmufr.weight_audit(model)`.
+2. **Settling does no measurable work.** Mean belief movement 0.09 percent; energy flat to one float32 unit at the magnitude it operates at; 314 of 318 validation batches show exactly zero energy change.
+3. **Uncertainties are a constant, not a prediction.** `UncertaintyHead` returns `clamp(softplus(net(b)) + 1e-2, max=4.0)` and sits at the floor, so σ = 0.1 for six of eight parameters on 100 percent of inputs. The reported ECE of 0.39 follows directly. Do not use these as error bars.
+4. **Neutrino mass is not recovered** (R² = 0.011 where it varies).
+5. **The energy subsystem diverged.** Energy sits near −9.3e5 and its heads drifted ~7e29 in relative norm. The `E_con` anomaly score is around −4.6e5, five orders of magnitude from the −0.999908 quoted in earlier material. It is not a usable out-of-distribution signal.
+6. **Two redshifts only** (z = 0, z = 0.47). Multi-redshift generalization is unvalidated, and the multi-redshift corpus has a documented ordering defect.
+7. **No baseline and no ablation.** There is no comparison against an amortized posterior estimator or a plain MLP, which is the first thing a reviewer should ask for.
+8. **Historical cross-run comparisons in this project are untrustworthy**, because epoch-to-epoch R² noise of ±0.03 to 0.10 was never controlled for.
 
 ## Training data
 
-84,505,755 (cosmology -> P(k)) pairs from 14 source datasets:
+84.5M cosmology → P(k) samples across 14 sources: CAMB (linear and non-linear), CAMELS (IllustrisTNG, SIMBA, Astrid), BACCO, Quijote, BCemu, DarkEmulator, SPk, plus dedicated n_s, w₀ and multi-redshift grids.
 
-| Source | Samples | Notes |
-|---|---|---|
-| BACCO | 26,000,000 | linear + non-linear emulator |
-| SPk | 18,328,000 | non-linear matter spectrum emulator |
-| BCemu | 12,000,000 | with baryonic feedback |
-| BACCO_neutrino | 10,000,000 | massive-neutrino sector |
-| BACCO_full8 | 10,000,000 | extended 8-param coverage |
-| BACCO_multiz | 5,000,000 | multi-redshift coverage |
-| BCemu_neutrino | 2,000,000 | with neutrinos + baryons |
-| DarkEmulator | 1,000,200 | non-linear from Quijote |
-| CAMB_NL | 200,000 | non-linear CAMB anchor |
-| CAMB_wa_grid | 50,000 | wa-axis fine grid |
-| CAMELS_IllusTNG / SIMBA | 6,000 | hydrodynamic |
-| Other (Quijote, multi-z grid, ns/w0 grids) | small | gap-filling |
+The corpus pins hard parameters at fiducial values in a large fraction of samples: w₀ in about 86 percent, w_a in about 88 percent, Σm_ν in about 74 percent. This is a substantial part of why those parameters recover poorly, and it is a coverage limit rather than a physics limit.
 
 ## Training procedure
 
-- Phases 0-3 (warmup -> recovery -> calibrate -> generative head ramp) on
-  T4 / A100; Phase 4 sequential fine-tune on a single B200 (192 GB).
-- Run 4 specifically: 60 epochs of Phase 4 fine-tune, B=4096, BF16, AdamW
-  with `lr_core = 6e-4` and `lr_energy = 2e-4`, cosine LR decay,
-  weight-decay 0.01, gradient clipping 1.0.
-- Two-optimizer setup so the energy heads update at a different rate from
-  the rest of the model.
-- Wall time: ~10 hours on B200, $40 compute.
+Phase 4 fine-tune on a single B200, batch 4096, BF16, warm-started from Run 3. Two optimizers, one for the core and one for the energy heads. Completed 2026-04-14.
 
-## Limitations and biases
+## Evaluation protocol
 
-- Trained mostly on smooth analytic / emulator P(k); real-data noise (shot
-  noise, mask effects) is not modeled. Treat as a smooth-P(k) emulator
-  inversion, not a fully end-to-end likelihood.
-- Performance on h, ns, Ob, w0, mv, wa is below paper-quality target. Do
-  not use this release for science-quality constraints on those parameters.
-  These reflect the **theoretical R² ceiling from P(k) at 2 redshifts in
-  k ∈ [0.1, 4.5] h/Mpc** (verified empirically across 7+ architectural variants
-  May 1–10, 2026). Improving them requires data extensions (higher k, more
-  redshifts, BAO features), not architecture changes.
-- The model's uncertainty heads are trained with NLL but not separately
-  calibrated; ECE is loose (0.39). Post-hoc temperature scaling planned for
-  future iteration.
-- Training data leans heavily on emulators (BACCO, SPk, BCemu, DarkEmulator)
-  rather than direct N-body; any systematic in those emulators is inherited.
-
-## How to use
-
-```python
-import cosmufr
-import numpy as np
-
-model  = cosmufr.load_model()       # private HF download (set HF_TOKEN)
-arr    = np.load("examples/synthetic_pk.npy")
-result = cosmufr.infer(arr[0], arr[1], model=model)
-
-print(result.params)        # 8-key dict
-print(result.sigmas)        # 8-key dict (1-sigma)
-print(result.pk_recon)      # reconstructed log10 P(k), shape (200,)
-print(result.energy_log)    # 17 floats: settling-energy trajectory
-```
-
-For the Fisher-ellipse corner-plot demo, see
-`examples/02_corner_plot_demo.ipynb` in the GitHub repo.
-
-## Files
-
-| File | Purpose |
-|---|---|
-| `best.pt` | model weights (545 MB, PyTorch state_dict) |
-| `config.json` | architecture hyperparameters (mirrors `cosmufr.CosmUFRConfig`) |
-| `README.md` | this card (HF auto-renders) |
+Deterministic validation split: for each source, the last `max(1, min(global_quota, n_source × 0.005))` rows. No RNG, so the split is bit-reproducible. Rows listed in `bad_indices.npy` are removed. Metrics are computed with the released inference package rather than the training-time evaluator.
 
 ## Citation
 
-```
+```bibtex
 @misc{cosmufr_run4_2026,
-  title  = {CosmUFR Run 4: A 136M-parameter belief-settling network for
-            cosmological parameter inference from matter power spectra},
+  title  = {CosmUFR Run 4: a belief-settling network for cosmological parameter
+            inference, with an audit of its training defects},
   author = {Rajgor, Aaditya},
   year   = {2026},
   url    = {https://huggingface.co/arajgor1/cosmufr-run4}
 }
 ```
-
-## License
-
-MIT.

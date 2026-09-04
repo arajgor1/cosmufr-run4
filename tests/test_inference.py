@@ -1,12 +1,17 @@
 """
-Smoke test: load Run 4 checkpoint, run inference on synthetic P(k), validate
-output shapes, ranges, and that the energy descent decreased monotonically.
+Smoke test: load the Run 4 checkpoint, run inference on a synthetic P(k), and
+validate output shapes and physical ranges.
+
+Note on the energy: this suite does NOT assert that settling descends. It does
+not. See tests/test_gradient_flow.py and cosmufr.settling_report() for the
+measurement and the reason.
 
 Run from repo root:
     python -m pytest tests/test_inference.py -v
 or
     python tests/test_inference.py
 """
+import os
 from pathlib import Path
 
 import numpy as np
@@ -20,9 +25,16 @@ SYNTH_PK   = Path(__file__).resolve().parents[1] / "examples" / "synthetic_pk.np
 
 
 def _ckpt_path():
+    env = os.environ.get("COSMUFR_CKPT")
+    if env and Path(env).exists():
+        return env
     if CKPT_LOCAL.exists():
         return str(CKPT_LOCAL)
-    pytest.skip(f"Local checkpoint not found at {CKPT_LOCAL}; download from HF first.")
+    pytest.skip(
+        f"No checkpoint found. Set COSMUFR_CKPT, or place best.pt at "
+        f"{CKPT_LOCAL}. Download it from "
+        f"https://huggingface.co/arajgor1/cosmufr-run4"
+    )
 
 
 def test_load_model():
@@ -63,9 +75,10 @@ def test_infer_shapes_and_ranges():
     # All sigmas are strictly positive
     assert (result.sigmas_array > 0).all()
 
-    # Energy at the end should not be wildly larger than at the start.
-    # (Settling can occasionally rise transiently; we just guard against blow-up.)
-    assert abs(result.energy_log[-1]) < 1e6
+    # Guard against energy blow-up only. The released checkpoint's energy sits
+    # near -9.3e5 and is flat across all 16 steps; asserting a descent here
+    # would be asserting something this model does not do.
+    assert abs(result.energy_log[-1]) < 1e7
 
 
 def test_dict_keys_match_param_labels():
@@ -81,7 +94,7 @@ if __name__ == "__main__":
     test_load_model()
     print("[OK] load_model — checkpoint loads with correct param count.")
     test_infer_shapes_and_ranges()
-    print("[OK] infer — shapes, ranges, and energy descent valid.")
+    print("[OK] infer — shapes and physical ranges valid.")
     test_dict_keys_match_param_labels()
     print("[OK] dict keys — params/sigmas keyed by PARAM_LABELS.")
     print("\nAll smoke tests passed.")
