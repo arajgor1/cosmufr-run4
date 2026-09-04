@@ -49,7 +49,16 @@ def _example_label(i: int) -> str:
     return f"#{i}  {src}   Ω_m={p[0]:.3f}  σ₈={p[1]:.3f}  h={p[2]:.3f}"
 
 
-EXAMPLE_CHOICES = [(_example_label(i), i) for i in EXAMPLE_IDS]
+# Plain string choices, not (label, value) tuples: the tuple form left the
+# click event silently no-op'ing in this Gradio version. The index is parsed
+# back out of the label.
+EXAMPLE_CHOICES = [_example_label(i) for i in EXAMPLE_IDS]
+
+
+def _index_from_label(label) -> int:
+    if isinstance(label, (int, float)):
+        return int(label)
+    return int(str(label).split()[0].lstrip("#"))
 
 HEADER = f"""
 # CosmUFR Run 4
@@ -106,27 +115,53 @@ def _fig_to_image(fig):
     return Image.open(buf)
 
 
+TABLE_HEADERS = ["parameter", "predicted", "reported sigma", "true", "residual"]
+
+
 def _param_rows(result, truth=None):
+    """Always five columns, so the Dataframe's headers can stay static."""
     rows = []
     for i, lbl in enumerate(PARAM_LABELS):
-        v = result.params_array[i]
-        s = result.sigmas_array[i]
-        row = [PARAM_TEX[lbl], f"{v:.5f}",
-               f"{s:.4f}  (clamp floor)" if abs(s - 0.1) < 1e-6 else f"{s:.4f}"]
-        if truth is not None:
-            row += [f"{truth[i]:.5f}", f"{v - truth[i]:+.5f}"]
-        rows.append(row)
+        v = float(result.params_array[i])
+        sg = float(result.sigmas_array[i])
+        rows.append([
+            PARAM_TEX[lbl],
+            f"{v:.5f}",
+            f"{sg:.4f} (clamp floor)" if abs(sg - 0.1) < 1e-6 else f"{sg:.4f}",
+            f"{truth[i]:.5f}" if truth is not None else "-",
+            f"{v - truth[i]:+.5f}" if truth is not None else "-",
+        ])
     return rows
 
 
-def run_example(idx, progress=gr.Progress()):
-    idx = int(idx)
+def _guard(fn):
+    """Turn a handler crash into a visible message instead of blank outputs."""
+    import functools
+    import traceback
+
+    @functools.wraps(fn)
+    def wrapper(*a, **k):
+        try:
+            return fn(*a, **k)
+        except gr.Error:
+            raise
+        except Exception as e:
+            traceback.print_exc()
+            raise gr.Error(f"{type(e).__name__}: {e}")
+
+    return wrapper
+
+
+@_guard
+def run_example(idx):
+    idx = _index_from_label(idx)
     pk0, pk047 = BENCH.pk_z0[idx], BENCH.pk_z047[idx]
     truth = BENCH.params[idx]
-    return _run(pk0, pk047, truth, progress)
+    return _run(pk0, pk047, truth)
 
 
-def run_upload(file, progress=gr.Progress()):
+@_guard
+def run_upload(file):
     if file is None:
         raise gr.Error("Upload a .npy or .csv with shape (2, 200): "
                        "row 0 = P(k) at z=0, row 1 = P(k) at z=0.47.")
@@ -146,22 +181,16 @@ def run_upload(file, progress=gr.Progress()):
         )
     if not np.isfinite(arr).all():
         raise gr.Error("Input contains NaN or inf.")
-    return _run(arr[0], arr[1], None, progress)
+    return _run(arr[0], arr[1], None)
 
 
-def _run(pk0, pk047, truth, progress):
-    progress(0.1, desc="running inference")
+def _run(pk0, pk047, truth):
     t0 = time.time()
     result = cosmufr.infer(pk0, pk047, model=MODEL)
     dt = (time.time() - t0) * 1000
 
-    progress(0.4, desc="tracing the settling loop")
     report = cosmufr.settling_report(MODEL, pk0, pk047)
 
-    progress(0.7, desc="rendering")
-    headers = ["parameter", "predicted", "reported σ"]
-    if truth is not None:
-        headers += ["true", "residual"]
     rows = _param_rows(result, truth)
 
     fig_pk = _fig_to_image(F.fig_pk_reconstruction(
@@ -175,7 +204,7 @@ def _run(pk0, pk047, truth, progress):
         f"({report.energy_drop_in_ulps:.1f} float32 ULP)"
     )
     return (
-        gr.Dataframe(value=rows, headers=headers, wrap=True),
+        rows,
         fig_pk, fig_settle, meta,
         json.dumps(
             {"params": result.params,
@@ -217,7 +246,7 @@ def audit_view():
 
 def results_view():
     if not REPORT:
-        return "Report not bundled with this deployment.", None
+        return []
     full = REPORT["full_val_metrics"]
     vary = REPORT["full_val_metrics_varying_only"]
     rows = []
@@ -229,10 +258,7 @@ def results_view():
             "n/a" if v is None else f"{v:.3f}",
             f"{full[lbl]['rmse']:.4f}",
         ])
-    return gr.Dataframe(
-        value=rows,
-        headers=["parameter", "R² full validation", "R² where it varies", "RMSE"],
-    )
+    return rows
 
 
 with gr.Blocks(title="CosmUFR Run 4", theme=gr.themes.Soft()) as demo:
@@ -241,9 +267,10 @@ with gr.Blocks(title="CosmUFR Run 4", theme=gr.themes.Soft()) as demo:
     with gr.Tab("Infer"):
         with gr.Row():
             with gr.Column(scale=1):
-                ex = gr.Dropdown(choices=EXAMPLE_CHOICES,
-                                 value=EXAMPLE_CHOICES[0][1],
-                                 label="Example spectrum (from the bundled benchmark, truth known)")
+                ex = gr.Dropdown(
+                    choices=EXAMPLE_CHOICES, value=EXAMPLE_CHOICES[0],
+                    label="Example spectrum (bundled benchmark, truth known)",
+                )
                 btn = gr.Button("Run inference", variant="primary")
                 gr.Markdown("**or** upload your own")
                 up = gr.File(label=".npy or .csv, shape (2, 200)",
@@ -256,7 +283,10 @@ with gr.Blocks(title="CosmUFR Run 4", theme=gr.themes.Soft()) as demo:
                 )
             with gr.Column(scale=2):
                 meta = gr.Markdown()
-                table = gr.Dataframe(label="Parameters")
+                table = gr.Dataframe(
+                    headers=TABLE_HEADERS, label="Parameters",
+                    col_count=(5, "fixed"), wrap=True, interactive=False,
+                )
         with gr.Row():
             pk_img = gr.Image(label="P(k): the generative head returns a constant", type="pil")
             settle_img = gr.Image(label="Settling trajectory", type="pil")
@@ -285,7 +315,11 @@ with gr.Blocks(title="CosmUFR Run 4", theme=gr.themes.Soft()) as demo:
             "slice where a parameter is pinned at a fiducial constant it "
             "measures nothing. For Σm_ν this is the whole story."
         )
-        res_table = gr.Dataframe()
+        res_table = gr.Dataframe(
+            headers=["parameter", "R2 full validation", "R2 where it varies",
+                     "RMSE"],
+            col_count=(4, "fixed"), wrap=True, interactive=False,
+        )
         demo.load(results_view, None, [res_table])
         gr.Markdown(
             "Reproduce with `python -m cosmufr.reproduce` after cloning the "
