@@ -81,6 +81,9 @@ FOOTER = """
    unit. It does no measurable work.
 3. Every reported σ is the clamp floor (0.1) for six of eight parameters, on
    100% of inputs. Not error bars.
+3b. The generative head returns one constant at every k, for every input, and
+   even for a random belief vector. The "reconstruction" is not one, and its
+   MSE of 0.687 is just the variance of log10 P(k) about a constant.
 4. Σm_ν is not recovered: R² = 0.011 where it varies. The higher figure in
    older material was an artifact of Σm_ν being pinned at zero in most of the
    training corpus.
@@ -255,7 +258,7 @@ with gr.Blocks(title="CosmUFR Run 4", theme=gr.themes.Soft()) as demo:
                 meta = gr.Markdown()
                 table = gr.Dataframe(label="Parameters")
         with gr.Row():
-            pk_img = gr.Image(label="P(k) reconstruction", type="pil")
+            pk_img = gr.Image(label="P(k): the generative head returns a constant", type="pil")
             settle_img = gr.Image(label="Settling trajectory", type="pil")
         js = gr.Code(label="Result JSON", language="json")
 

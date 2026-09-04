@@ -35,6 +35,10 @@ Known defects, stated up front
 4. m_nu recovery is R² ≈ 0.01 when measured only where m_nu varies. The higher
    number in older material was an artifact of m_nu being pinned at zero
    throughout most of the training corpus.
+5. The GenerativeHead collapsed: `result.pk_recon` is the same constant at
+   every k, for every input, and for a random belief. It is not a
+   reconstruction, and its MSE of 0.687 is the variance of log10 P(k) about a
+   constant.
 
 See README.md and MODEL_CARD.md for the full picture.
 """

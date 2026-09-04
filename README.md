@@ -40,6 +40,8 @@ unc_head                    yes         6      0/6         3.927e-01     trained
 
 A `Linear` bias that has taken even one optimizer step essentially never returns to exactly `0.0`. Eighty-four of them are still bit-exactly zero after forty epochs.
 
+"Trained" in that table means only that a module's weights moved. Two of the three that moved are degenerate anyway: `unc_head` sits at its clamp floor and `gen_head` collapsed to emitting a single constant. `param_head` is the only part of this model doing useful work.
+
 The confirming measurement compares Run 2's checkpoint against Run 4's. Run 4 was warm-started from Run 3, itself warm-started from Run 2, then trained forty further epochs:
 
 | Module | Tensors | Bit-identical | Mean relative change |
@@ -55,7 +57,7 @@ Zero relative change across three training runs is not slow learning. It is no g
 
 **What the model therefore is:** trained read-out heads on a fixed random projection of the input. Random projections preserve a great deal of structure, which is why the results below are respectable. It also means they are a floor for this architecture rather than a ceiling.
 
-**Consequences you will see in the demo.** Settling moves the belief by 0.09 percent of its norm; its energy changes by one float32 unit at the magnitude it operates at, which is the smallest change the number can represent. The uncertainty head is pinned at its clamp floor, so every reported σ is the constant 0.1 and none of them are usable error bars.
+**Consequences you will see in the demo.** Settling moves the belief by 0.09 percent of its norm, and its energy changes by one float32 unit at the magnitude it operates at, which is the smallest change the number can represent. The uncertainty head is pinned at its clamp floor, so every reported σ is the constant 0.1 and none of them are usable error bars. The generative head returns a single constant at every k for every input, so the P(k) reconstruction is not a reconstruction.
 
 ---
 
@@ -146,6 +148,7 @@ result = cosmufr.infer(bench.pk_z0[0], bench.pk_z047[0], model=model)
 print(result.params)   # {'Om': 0.387, 's8': 0.672, 'h': 0.669, ...}
 print(result.pk_recon) # reconstructed log10 P(k)
 # result.sigmas is the clamp floor on every input. Do not use it as an error bar.
+# result.pk_recon is a constant, not a reconstruction. See defect 9.
 ```
 
 Inputs are `P(k)` on a 200-bin log-spaced grid over k ∈ [0.1, 4.5] h/Mpc, at z=0 and z=0.47. Raw or log10 are both accepted and auto-detected.
@@ -172,6 +175,7 @@ Stated in full, because a reader will find all of them within ten minutes.
 6. **Two redshifts only** (z=0 and z=0.47). Multi-redshift generalization is not validated, and the multi-redshift corpus has a documented ordering defect.
 7. **Evaluation noise was never controlled.** Epoch-to-epoch R² noise of ±0.03 to 0.10 means historical cross-run comparisons in this project's development logs are not trustworthy.
 8. **The architecture flags** `use_explicit_z`, `use_source_aware` and `use_multi_z_encoder` are hard-coded off. The checkpoint was trained without them.
+9. **The generative head collapsed to a constant.** `GenerativeHead` is documented as reconstructing `log10 P(k)` at arbitrary k. It returns 2.6327 at every k, for every input spectrum, and for a random belief vector, with measured variation of 2e-7 in both directions. Its reported log-space MSE of 0.687 is simply the variance of `log10 P(k)` about a constant, which is what a predictor that ignores its input scores. There is no reconstruction.
 
 ---
 
@@ -198,9 +202,9 @@ The broader question I want to work on is using learned inference to shorten the
 
 ## Architecture
 
-Input is `log10 P(k)` at two redshifts, concatenated to a 400-d vector. `ObsEncoder` maps it to a 1024-d belief. `BeliefProposal` combines that with a previous belief. `SettlingCore` runs 16 steps of gradient descent on `E = 1.0·E_obs + 0.5·E_con + 0.5·E_dyn`, with a per-step learned preconditioner in [0.01, 1.0] and step size in [0.001, 0.05]. The settled belief feeds `ParameterHead` (8 parameters, sigmoid-clamped to physical priors), `UncertaintyHead` (8 variances) and a k-continuous `GenerativeHead` that reconstructs `log10 P(k)` at arbitrary k. There is no attention anywhere.
+Input is `log10 P(k)` at two redshifts, concatenated to a 400-d vector. `ObsEncoder` maps it to a 1024-d belief. `BeliefProposal` combines that with a previous belief. `SettlingCore` runs 16 steps of gradient descent on `E = 1.0·E_obs + 0.5·E_con + 0.5·E_dyn`, with a per-step learned preconditioner in [0.01, 1.0] and step size in [0.001, 0.05]. The settled belief feeds `ParameterHead` (8 parameters, sigmoid-clamped to physical priors), `UncertaintyHead` (8 variances) and a k-continuous `GenerativeHead` intended to reconstruct `log10 P(k)` at arbitrary k. There is no attention anywhere.
 
-Per the audit, only the heads and the energy networks carry trained weights.
+Per the audit, only `ParameterHead` does useful work. The belief pipeline never trained; the uncertainty head sits at its clamp floor; the generative head returns a constant; the energy heads diverged.
 
 ## Training summary
 

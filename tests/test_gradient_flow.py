@@ -183,3 +183,33 @@ def test_uncertainties_are_the_clamp_floor():
         f"Only {len(pinned)} parameters sit at the clamp floor now. "
         f"If the uncertainty head was retrained, update the documented defects."
     )
+
+
+@needs_ckpt
+def test_generative_head_returns_a_constant():
+    """
+    Records that the k-continuous decoder collapsed.
+
+    `GenerativeHead` is documented as reconstructing log10 P(k) at arbitrary k.
+    It does not: it returns the same value at every k, for every input, and for
+    a random belief vector. Its reported MSE of 0.687 is the variance of
+    log10 P(k) about a constant, i.e. the score of a predictor that ignores its
+    input entirely.
+    """
+    model = cosmufr.load_model(ckpt_path=CKPT)
+    bench = cosmufr.load_benchmark()
+
+    recon = np.stack([
+        cosmufr.infer(bench.pk_z0[i], bench.pk_z047[i], model=model).pk_recon
+        for i in (0, 500, 1500)
+    ])
+
+    across_k = recon.std(axis=1).mean()
+    across_inputs = recon.std(axis=0).mean()
+    assert across_k < 1e-4, (
+        f"Output now varies by {across_k:.2e} across k. If the generative head "
+        f"was retrained, update the documented defect list."
+    )
+    assert across_inputs < 1e-4, (
+        f"Output now varies by {across_inputs:.2e} across inputs. Same as above."
+    )

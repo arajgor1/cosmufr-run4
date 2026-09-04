@@ -17,7 +17,7 @@ pipeline_tag: tabular-regression
 - Code and reproduction: https://github.com/arajgor1/cosmufr-run4
 - Checkpoint SHA256: `5db09d4ff02316c60a43e08fa242223d3243f4f224b625798eaf385151150fc1`
 
-> **Read this first.** The belief-settling core that gives this architecture its name never received a gradient during training. It sits at initialization. What learned is the set of read-out heads, which learn to read a fixed random projection of the input. Numbers below are measured on that basis and are reproducible from this repository. Earlier published figures for this model (Ω_m 0.907, σ₈ 0.911, h 0.604) are superseded and should not be cited.
+> **Read this first.** The belief-settling core that gives this architecture its name never received a gradient during training. It sits at initialization. What learned is the set of read-out heads, and of those only the parameter head does useful work: the uncertainty head is stuck at its clamp floor and the generative head returns a constant. Numbers below are measured on that basis and are reproducible from this repository. Earlier published figures for this model (Ω_m 0.907, σ₈ 0.911, h 0.604) are superseded and should not be cited.
 
 ---
 
@@ -29,7 +29,7 @@ pipeline_tag: tabular-regression
 | Model type | Feed-forward energy-based parameter inference, no attention |
 | Parameters | 136,194,617 |
 | Inputs | `log10 P(k)`, 200 log-spaced k bins over k ∈ [0.1, 4.5] h/Mpc, at z = 0 and z = 0.47 |
-| Outputs | 8 cosmological parameters, 8 variances, k-continuous P(k) reconstruction |
+| Outputs | 8 cosmological parameters. Also 8 variances and a P(k) reconstruction, both of which are degenerate: see limitations 3 and 9. |
 | Precision | float32 |
 | Latency | ~400 ms per spectrum on CPU |
 | Determinism | Bit-identical across repeated calls |
@@ -103,6 +103,7 @@ The 6,000-row benchmark ships in the repository and alongside these weights as `
 6. **Two redshifts only** (z = 0, z = 0.47). Multi-redshift generalization is unvalidated, and the multi-redshift corpus has a documented ordering defect.
 7. **No baseline and no ablation.** There is no comparison against an amortized posterior estimator or a plain MLP, which is the first thing a reviewer should ask for.
 8. **Historical cross-run comparisons in this project are untrustworthy**, because epoch-to-epoch R² noise of ±0.03 to 0.10 was never controlled for.
+9. **The generative head collapsed to a constant.** `GenerativeHead` is documented as reconstructing `log10 P(k)` at arbitrary k. It returns 2.6327 at every k, for every input spectrum, and for a random belief vector, with measured variation of 2e-7 in both directions. Its reported log-space MSE of 0.687 is simply the variance of `log10 P(k)` about a constant, which is what a predictor that ignores its input scores. There is no reconstruction.
 
 ## Training data
 

@@ -70,14 +70,14 @@ def fig_weight_audit(audit, figsize=(8, 4.2)):
     ax.barh(y, fracs, color=colors, alpha=0.85, height=0.62)
     ax.set_yticks(y)
     ax.set_yticklabels(names, fontsize=9)
-    ax.set_xlim(0, 1.08)
+    ax.set_xlim(0, 1.42)
     ax.set_xlabel("fraction of Linear layers whose bias is still exactly 0.0", fontsize=9)
     ax.set_title("Which modules ever received a gradient", fontsize=11, pad=10)
     ax.invert_yaxis()
 
     for yi, f in zip(y, fracs):
         label = "never trained" if f == 1.0 else "trained"
-        ax.text(f + 0.02, yi, label, va="center", fontsize=8,
+        ax.text(f + 0.03, yi, label, va="center", fontsize=8.5,
                 color=C_RED if f == 1.0 else C_GREEN)
 
     ax.axvline(1.0, color=C_GREY, linestyle=":", linewidth=1, alpha=0.6)
@@ -99,34 +99,53 @@ def fig_settling_trajectory(report, figsize=(8, 6)):
     import matplotlib.pyplot as plt
 
     steps = np.arange(len(report.energy_log))
+    E = np.asarray(report.energy_log, dtype=np.float64)
+    E0 = E[0]
+
+    # Plotting raw energy autoscales to a range of ~0.1 around -9.3e5, which
+    # renders float32 rounding as dramatic oscillation. The honest axis is the
+    # float32 resolution at that magnitude: one ULP is the smallest change the
+    # number can express, so a trace living inside +/- a few ULP is not descent.
+    ulp = float(np.spacing(np.float32(abs(E0))))
+    E_ulp = (E - E0) / ulp
+
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize, sharex=True,
                                    gridspec_kw={"height_ratios": [1, 1.15]})
 
-    ax1.plot(steps, report.energy_log, color=C_BLUE, marker="o",
-             markersize=3.5, linewidth=1.6)
-    ax1.set_ylabel("total energy $E$", fontsize=9)
+    ax1.axhspan(-1, 1, color=C_GREY, alpha=0.16,
+                label="±1 float32 ULP (the resolution limit)")
+    ax1.plot(steps, E_ulp, color=C_BLUE, marker="o", markersize=3.5,
+             linewidth=1.6)
+    ax1.axhline(0, color=C_GREY, linewidth=0.8, alpha=0.6)
+    ax1.set_ylabel("change in $E$\n(float32 ULP)", fontsize=9)
+    ax1.set_ylim(min(-2.2, E_ulp.min() * 1.25), max(2.2, E_ulp.max() * 1.25))
+    ax1.legend(fontsize=8, frameon=False, loc="upper left")
     ax1.set_title("Belief settling: 16 steps of energy gradient descent",
                   fontsize=11, pad=10)
-    drop = report.energy_drop
-    ax1.annotate(f"energy drop over 16 steps: {drop:.3e}",
-                 xy=(0.98, 0.10), xycoords="axes fraction", ha="right",
-                 fontsize=8.5, color=C_RED if abs(drop) < 1e-3 else C_GREEN)
+    ax1.annotate(f"$E$ = {E0:,.1f} throughout   ·   1 ULP = {ulp:.4g}",
+                 xy=(0.98, 0.06), xycoords="axes fraction", ha="right",
+                 fontsize=8.5, color=C_RED)
 
+    # Parameter drift as a fraction of each parameter's own prior range. Percent
+    # of value would be unstable for w_a and m_nu, whose values sit near zero.
     t = report.param_trajectory
+    ranges = {"Om": 0.40, "s8": 0.48, "h": 0.20, "ns": 0.12,
+              "Ob": 0.04, "w0": 0.40, "mv": 0.40, "wa": 1.00}
     for i, lbl in enumerate(PARAM_LABELS):
-        base = t[0, i] if abs(t[0, i]) > 1e-12 else 1.0
-        ax2.plot(steps, 100 * (t[:, i] - t[0, i]) / abs(base),
+        ax2.plot(steps, 100 * (t[:, i] - t[0, i]) / ranges[lbl],
                  label=PARAM_TEX[lbl], linewidth=1.5)
     ax2.set_xlabel("settling step", fontsize=9)
-    ax2.set_ylabel("change from step 0  (%)", fontsize=9)
+    ax2.set_ylabel("change from step 0\n(% of prior range)", fontsize=9)
+    ax2.set_ylim(-1, 1)
     ax2.legend(ncol=4, fontsize=8, frameon=False, loc="upper left")
     ax2.axhline(0, color=C_GREY, linewidth=0.8, alpha=0.5)
 
-    fig.text(0.01, -0.015,
-             f"Belief moves {report.belief_movement*100:.3f}% of its norm across all "
-             f"16 steps; cosine similarity {report.cosine_similarity:.6f}.\n"
-             "The refinement runs but does no measurable work. See the weight "
-             "audit for why.", fontsize=8, color=C_GREY)
+    fig.text(0.01, -0.02,
+             f"Belief moves {report.belief_movement*100:.3f}% of its norm across "
+             f"all 16 steps; cosine similarity {report.cosine_similarity:.6f}.\n"
+             "Both panels are flat. The refinement runs and does no measurable "
+             "work. The weight audit gives the reason.",
+             fontsize=8, color=C_GREY)
     fig.tight_layout()
     return _style(fig, [ax1, ax2])
 
@@ -172,10 +191,15 @@ def fig_parameter_recovery(result, figsize=(11, 6)):
 def fig_pk_reconstruction(k, pk_z0, pk_z047, pk_recon, log_k_recon=None,
                           figsize=(8, 6)):
     """
-    Input spectra against the generative head's reconstruction, plus residual.
+    Input spectra against the generative head's output.
 
-    The generative head is one of the parts of this model that did train, so
-    this figure shows real work rather than a null result.
+    This is not a reconstruction. The generative head returns the same constant
+    (log10 P = 2.6327) at every k, for every input spectrum, and even for a
+    random belief vector: measured variation is 2e-7 across k and 2e-7 across
+    inputs. Its reported MSE of 0.687 is simply the variance of log10 P(k)
+    about a constant, which is what a predictor that ignores its input scores.
+
+    The figure is kept because the collapse is worth seeing.
     """
     import matplotlib.pyplot as plt
 
@@ -196,23 +220,34 @@ def fig_pk_reconstruction(k, pk_z0, pk_z047, pk_recon, log_k_recon=None,
 
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=figsize, sharex=True,
                                    gridspec_kw={"height_ratios": [2, 1]})
+    spread = float(np.asarray(pk_recon).std())
+
     ax1.plot(k, pk_z0, color=C_BLUE, linewidth=1.8, label="input, $z=0$")
     ax1.plot(k, pk_z047, color=C_SKY, linewidth=1.4, alpha=0.85,
              label="input, $z=0.47$")
-    ax1.plot(k_recon, pk_recon, color=C_ORANGE, linewidth=1.6, linestyle="--",
-             label="GenerativeHead reconstruction")
+    ax1.plot(k_recon, pk_recon, color=C_RED, linewidth=1.8, linestyle="--",
+             label=f"GenerativeHead output (constant, std over $k$ = {spread:.1e})")
     ax1.set_xscale("log")
     ax1.set_ylabel(r"$\log_{10} P(k)$", fontsize=9)
-    ax1.legend(fontsize=8, frameon=False)
-    ax1.set_title("Power spectrum reconstruction", fontsize=11, pad=10)
+    ax1.legend(fontsize=8, frameon=False, loc="upper right")
+    ax1.set_title("The generative head returns a constant, not a reconstruction",
+                  fontsize=11, pad=10)
 
     ax2.plot(k, resid, color=C_PURPLE, linewidth=1.4)
     ax2.axhline(0, color=C_GREY, linewidth=0.9, alpha=0.6)
     ax2.set_xscale("log")
     ax2.set_xlabel(r"$k$  [$h\,\mathrm{Mpc}^{-1}$]", fontsize=9)
-    ax2.set_ylabel("input − recon", fontsize=9)
-    ax2.annotate(f"log-space MSE = {mse:.4f}", xy=(0.98, 0.85),
+    ax2.set_ylabel("input − output", fontsize=9)
+    ax2.annotate(f"log-space MSE = {mse:.4f}", xy=(0.98, 0.86),
                  xycoords="axes fraction", ha="right", fontsize=8.5)
+
+    fig.text(0.01, -0.07,
+             "The head emits the same value at every $k$, for every input "
+             "spectrum, and for a random belief vector\n(variation ~2e-7 in "
+             "both directions). Its MSE is the variance of "
+             r"$\log_{10} P(k)$ about a constant,"
+             "\nwhich is what a predictor that ignores its input scores.",
+             fontsize=8, color=C_GREY)
     fig.tight_layout()
     return _style(fig, [ax1, ax2])
 
@@ -280,29 +315,41 @@ def fig_per_source(result, figsize=(9, 4.8)):
         mat.append([blk["metrics"][p]["r2"] for p in PARAM_LABELS])
         flags.append(bool(blk.get("known_defective")))
 
-    arr = np.array([[np.nan if v is None else v for v in row] for row in mat],
-                   dtype=float)
-    arr = np.clip(arr, -0.25, 1.0)
+    # True values drive the printed text; a clipped copy drives only the colour.
+    # Printing the clipped value would be a lie: ns_grid's h is -7.97, and an
+    # earlier version of this figure displayed it as -0.25.
+    true_arr = np.array([[np.nan if v is None else v for v in row] for row in mat],
+                        dtype=float)
+    colour_arr = np.clip(true_arr, -0.25, 1.0)
 
     fig, ax = plt.subplots(figsize=figsize)
-    im = ax.imshow(arr, cmap="RdYlGn", vmin=-0.25, vmax=1.0, aspect="auto")
+    im = ax.imshow(colour_arr, cmap="RdYlGn", vmin=-0.25, vmax=1.0, aspect="auto")
     ax.set_xticks(np.arange(len(PARAM_LABELS)))
     ax.set_xticklabels([PARAM_TEX[p] for p in PARAM_LABELS], fontsize=10)
     ax.set_yticks(np.arange(len(names)))
     ax.set_yticklabels(names, fontsize=8.5)
 
-    for r in range(arr.shape[0]):
-        for c in range(arr.shape[1]):
-            v = arr[r, c]
-            ax.text(c, r, "--" if np.isnan(v) else f"{v:.2f}",
-                    ha="center", va="center", fontsize=7.5,
-                    color="#222222" if not np.isnan(v) else C_GREY)
+    for r in range(true_arr.shape[0]):
+        for c in range(true_arr.shape[1]):
+            v = true_arr[r, c]
+            if np.isnan(v):
+                txt = "--"
+            elif abs(v) >= 100:
+                txt = f"{v:.0e}"
+            else:
+                txt = f"{v:.2f}"
+            ax.text(c, r, txt, ha="center", va="center", fontsize=7.5,
+                    color=C_GREY if np.isnan(v) else "#222222")
         if flags[r]:
-            ax.text(arr.shape[1] - 0.35, r, "  known data defect",
-                    va="center", fontsize=7.5, color=C_RED)
+            ax.text(-0.85, r, "!", va="center", ha="center", fontsize=12,
+                    color=C_RED, fontweight="bold", clip_on=False)
 
-    ax.set_title("R² by training source  ('--' = parameter pinned, R² undefined)",
-                 fontsize=10.5, pad=10)
-    fig.colorbar(im, ax=ax, fraction=0.025, pad=0.02, label="R²")
+    ax.set_title("R² by training source", fontsize=11, pad=10)
+    fig.colorbar(im, ax=ax, fraction=0.025, pad=0.02, label="R² (colour clipped to [-0.25, 1])")
+    fig.text(0.01, -0.03,
+             "'--' means the parameter is pinned in that source, so R² is "
+             "undefined. Printed numbers are true values;\nonly the colour is "
+             "clipped. '!' marks a source with a documented data defect.",
+             fontsize=8, color=C_GREY)
     fig.tight_layout()
     return _style(fig, ax)
