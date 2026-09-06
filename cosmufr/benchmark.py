@@ -9,8 +9,11 @@ could check them. This module removes that problem: the benchmark is a
 deterministic 6,000-row subsample of the master validation split, committed to
 the repository, and `evaluate()` regenerates the released table from it.
 
-If your numbers differ from `reports/honest_eval.json`, that is a bug worth
-reporting, not an expected difference.
+`evaluate()` reproduces the `benchmark` block of `reports/honest_eval.json` to
+about 1e-6. It does NOT reproduce the `full_val_metrics` block: that was
+measured on 162,795 private rows, and this 6,000-row subsample lands within
+about 0.03 of it by sampling noise. Both numbers are published side by side so
+the gap is visible rather than implied away.
 
 Usage
 -----

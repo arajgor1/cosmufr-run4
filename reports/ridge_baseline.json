@@ -1,0 +1,58 @@
+{
+  "seed": 20260904,
+  "lam": 1.0,
+  "n_fit": 3000,
+  "n_test": 3000,
+  "params": {
+    "Om": {
+      "ridge_r2": 0.7382109585723563,
+      "cosmufr_r2": 0.7156953519849287,
+      "winner": "ridge",
+      "pinned": false
+    },
+    "s8": {
+      "ridge_r2": 0.7338313290093412,
+      "cosmufr_r2": 0.7771996718828829,
+      "winner": "cosmufr",
+      "pinned": false
+    },
+    "h": {
+      "ridge_r2": 0.41673487846792134,
+      "cosmufr_r2": 0.49575997069928357,
+      "winner": "cosmufr",
+      "pinned": false
+    },
+    "ns": {
+      "ridge_r2": 0.20536842122866417,
+      "cosmufr_r2": 0.3428889129305812,
+      "winner": "cosmufr",
+      "pinned": false
+    },
+    "Ob": {
+      "ridge_r2": 0.31222737233805165,
+      "cosmufr_r2": 0.3533255678999546,
+      "winner": "cosmufr",
+      "pinned": false
+    },
+    "w0": {
+      "ridge_r2": -0.013756938835022936,
+      "cosmufr_r2": 0.6117115455240065,
+      "winner": "cosmufr",
+      "pinned": false
+    },
+    "mv": {
+      "ridge_r2": 0.24228065003467159,
+      "cosmufr_r2": 0.42305764910368726,
+      "winner": "cosmufr",
+      "pinned": false
+    },
+    "wa": {
+      "ridge_r2": 0.01771032161667807,
+      "cosmufr_r2": 0.1704910826845033,
+      "winner": "cosmufr",
+      "pinned": false
+    }
+  },
+  "cosmufr_wins": 7,
+  "n_compared": 8
+}

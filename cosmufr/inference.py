@@ -57,18 +57,24 @@ class CosmUFRResult:
     params : dict[str, float]
         Point estimates for [Om, s8, h, ns, Ob, w0, mv, wa].
     sigmas : dict[str, float]
-        1-sigma uncertainties per parameter (sqrt of model-predicted variance).
+        sqrt of the model-predicted variance. NOT usable as an error bar: the
+        uncertainty head sits at its clamp floor, so this is the constant 0.1
+        for six of eight parameters on every input. See cosmufr.uncertainty_audit.
     params_array : np.ndarray
         Same point estimates as a length-8 array, in PARAM_LABELS order.
     sigmas_array : np.ndarray
-        Same sigmas as a length-8 array.
+        Same sigmas as a length-8 array. See the note on `sigmas`.
     pk_recon : np.ndarray
-        Reconstructed log10 P(k) at the default 200-bin k-grid.
+        The GenerativeHead's output at the default 200-bin k-grid. NOT a
+        reconstruction: the head returns the same constant at every k, for
+        every input, and for a random belief vector.
     log_k : np.ndarray
         log(k) values where pk_recon is evaluated (length 200).
     energy_log : list[float]
-        Settling energy at each of the 17 steps (initial + 16 GD updates).
-        Should be monotonically decreasing for a well-trained model.
+        Settling energy at each of the 17 steps (initial + 16 GD updates). On
+        the released checkpoint this is flat to one float32 unit: the energy
+        heads collapsed to an input-independent constant, so there is no
+        landscape to descend. See cosmufr.settling_report.
     """
     params:        Dict[str, float]
     sigmas:        Dict[str, float]

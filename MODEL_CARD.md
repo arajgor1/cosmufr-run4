@@ -52,16 +52,16 @@ Research and teaching. Specifically:
 
 Measured on the deterministic validation split, 162,795 rows across 16 sources, using the released inference package. Full report: `reports/honest_eval.json`.
 
-| Parameter | Full validation R² | R² where it varies | RMSE |
-|---|---|---|---|
-| Ω_m | 0.717 | 0.720 | 0.0273 |
-| σ₈ | 0.756 | 0.757 | 0.0285 |
-| h | 0.501 | 0.498 | 0.0402 |
-| w₀ | 0.586 | 0.614 | 0.0254 |
-| Ω_b | 0.364 | 0.363 | 0.0045 |
-| n_s | 0.338 | 0.339 | 0.0214 |
-| w_a | 0.165 | 0.185 | 0.0616 |
-| Σm_ν | 0.407 | **0.011** | 0.0993 |
+| Parameter | Full validation R² | R² where it varies | Bundled benchmark (reproducible) | RMSE |
+|---|---|---|---|---|
+| Ω_m | 0.717 | 0.720 | 0.687 | 0.0273 |
+| σ₈ | 0.756 | 0.757 | 0.738 | 0.0285 |
+| h | 0.501 | 0.498 | 0.475 | 0.0402 |
+| w₀ | 0.586 | 0.614 | 0.599 | 0.0254 |
+| Ω_b | 0.364 | 0.363 | 0.353 | 0.0045 |
+| n_s | 0.338 | 0.339 | 0.331 | 0.0214 |
+| w_a | 0.165 | 0.185 | 0.148 | 0.0616 |
+| Σm_ν | 0.407 | **0.011** | 0.410 | 0.0993 |
 
 R² is a ratio against the variance of the truth, so on a slice where a parameter is held at a fiducial constant it measures nothing. The second column restricts each parameter to the sources that actually vary it. For Σm_ν this is decisive: the apparent 0.41 is an artifact of Σm_ν being pinned at zero across most of the training corpus, where predicting near-zero scores well without recovering anything. **This model does not constrain neutrino mass.**
 
@@ -69,16 +69,21 @@ R² is a ratio against the variance of the truth, so on a slice where a paramete
 
 The aggregate understates performance on sound data and overstates it on defective data. Both are shown.
 
-| Source | n | Ω_m | σ₈ | h | n_s | Ω_b |
-|---|---|---|---|---|---|---|
-| bacco | 23,997 | 0.99 | 0.99 | 0.68 | 0.58 | 0.36 |
-| bcemu | 23,997 | 0.99 | 0.74 | 0.75 | 0.25 | 0.72 |
-| spk | 23,997 | 0.98 | 0.98 | 0.66 | 0.66 | 0.35 |
-| bacco_neutrino | 23,997 | 0.99 | 0.99 | 0.67 | 0.58 | 0.31 |
-| bacco_full8 | 23,997 | 0.99 | 0.99 | 0.63 | 0.24 | 0.34 |
-| **bacco_multiz** | 23,997 | -0.00 | -0.00 | -0.00 | -0.00 | 0.00 |
-| dark_emulator | 5,001 | 0.87 | 0.93 | -- | 0.30 | -- |
-| camb_nl | 1,000 | 0.98 | 0.99 | -- | -- | -- |
+All eleven sources, including the worst rows. Nothing is omitted.
+
+| Source | n | Ω_m | σ₈ | h | n_s | Ω_b | w₀ | Σm_ν | w_a |
+|---|---|---|---|---|---|---|---|---|---|
+| bacco | 23,997 | 0.99 | 0.99 | 0.68 | 0.58 | 0.36 | -- | -- | -- |
+| bcemu | 23,997 | 0.99 | 0.74 | 0.75 | 0.25 | 0.72 | -- | -- | -- |
+| spk | 23,997 | 0.98 | 0.98 | 0.66 | 0.66 | 0.35 | -- | -- | -- |
+| bacco_neutrino | 23,997 | 0.99 | 0.99 | 0.67 | 0.58 | 0.31 | -- | 0.52 | -- |
+| bacco_full8 | 23,997 | 0.99 | 0.99 | 0.63 | 0.24 | 0.34 | 0.61 | 0.08 | 0.19 |
+| **bacco_multiz** | 23,997 | -0.00 | -0.00 | -0.00 | -0.00 | 0.00 | -- | -0.00 | -- |
+| bcemu_neutrino | 10,000 | 0.99 | 0.74 | 0.75 | 0.23 | 0.72 | -- | **-1.34** | -- |
+| dark_emulator | 5,001 | 0.87 | 0.93 | -- | 0.30 | -- | 0.86 | -- | -- |
+| ns_grid | 2,500 | **-0.58** | **-0.23** | **-7.88** | -0.38 | -0.14 | -- | -- | -- |
+| camb_nl | 1,000 | 0.98 | 0.99 | -- | -- | -- | -- | -- | -- |
+| camels_astrid_x | 250 | -0.06 | -0.34 | **-5.08** | -0.78 | -0.02 | 0.03 | -- | -0.03 |
 
 `bacco_multiz` is 15 percent of the validation set and scores zero on everything, because its z=0.47 spectra are self-paired copies of its z=0 spectra and carry no growth information. That is a data-generation defect. `--` marks parameters pinned in that source, where R² is undefined.
 
@@ -91,7 +96,9 @@ pip install -e ".[demo]"
 python -m cosmufr.reproduce
 ```
 
-The 6,000-row benchmark ships in the repository and alongside these weights as `cosmufr_benchmark.npz`. On a clean machine the reproduction matches the published table to within 1e-6.
+The 6,000-row benchmark ships in the repository and alongside these weights as `cosmufr_benchmark.npz`.
+
+Be precise about what that reproduces. On a clean machine it regenerates the **benchmark** column below to about 1e-6. It does **not** regenerate the full-validation column: that was measured on 162,795 rows of a private split, and the 6,000-row subsample lands within about 0.03 of it through sampling noise alone. The full-validation numbers remain unverifiable from outside, and the benchmark narrows that gap rather than closing it.
 
 ## Limitations and known defects
 
@@ -109,7 +116,9 @@ The 6,000-row benchmark ships in the repository and alongside these weights as `
 
 84.5M cosmology → P(k) samples across 14 sources: CAMB (linear and non-linear), CAMELS (IllustrisTNG, SIMBA, Astrid), BACCO, Quijote, BCemu, DarkEmulator, SPk, plus dedicated n_s, w₀ and multi-redshift grids.
 
-The corpus pins hard parameters at fiducial values in a large fraction of samples: w₀ in about 86 percent, w_a in about 88 percent, Σm_ν in about 74 percent. This is a substantial part of why those parameters recover poorly, and it is a coverage limit rather than a physics limit.
+The corpus pins hard parameters at fiducial values in a large fraction of samples: w₀ in about 86 percent, w_a in about 88 percent, Σm_ν in about 74 percent. On the bundled benchmark the model is actually scored against, the figures are w₀ 81.9 percent, w_a 84.7 percent and Σm_ν 49.5 percent.
+
+How much of the weakness in h, w₀ and w_a is a coverage limit and how much is a genuine information limit of `log P(k)` at two redshifts is **not settled here**, and I do not currently know how to separate them. Designing that experiment is one of the things I want advice on.
 
 ## Training procedure
 
