@@ -100,7 +100,7 @@ FOOTER = """
    out-of-distribution signal.
 6. Two redshifts only. No baseline, no ablation.
 
-This is a research prototype from an in-progress PhD project. Code, benchmark
+An active research programme, released open under MIT. Code, benchmark
 and full report: [github.com/arajgor1/cosmufr-run4](https://github.com/arajgor1/cosmufr-run4)
 """
 
