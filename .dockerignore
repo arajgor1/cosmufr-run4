@@ -1,0 +1,15 @@
+.git
+.github
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.venv
+venv
+_local_ckpt
+figs
+*.egg-info
+build
+dist
+.ipynb_checkpoints
