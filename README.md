@@ -223,12 +223,12 @@ bit-deterministic, trained on 84.5M spectra across 14 suites. Matter density and
 clustering amplitude at R² 0.98 to 0.99 on sound data. A 6,000-case benchmark
 and a linear baseline both published, including where the baseline wins.
 
-**Next, and costed.** Repair the severed gradient path, guarded by the unit test
+**Next.** Repair the severed gradient path, guarded by the unit test
 that would have caught it originally, which is free and verifiable before any
 training spend. Then the harder one: fix the flat energy landscape. Give the
 uncertainty head a floor it can leave. Rebalance a corpus that pins dark energy
 at its fiducial value in 86 percent of samples. Then one pre-registered training
-run with a pass/fail threshold set in advance, roughly $15.
+run with a pass/fail threshold set in advance.
 
 **Open questions I want advice on.** Is iterative belief refinement worth
 pursuing at all once the gradient path works, or does an amortized posterior

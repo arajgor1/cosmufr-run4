@@ -80,6 +80,11 @@ RIDGE = json.loads((_reports / "ridge_baseline.json").read_text()) \
 
 EXAMPLE_IDS = list(range(0, min(len(BENCH), 5400), 211))[:24]
 
+# log10 P(k) at z=0 across the benchmark. Used only to tell a visitor whether
+# the spectrum they uploaded resembles what the model was trained on, which is
+# the most useful thing available when there is no truth to score against.
+BENCH_LOGPK = np.log10(np.clip(BENCH.pk_z0, 1e-30, None))
+
 app = FastAPI(title="CosmUFR")
 
 
@@ -317,7 +322,10 @@ img.fig{width:100%; height:auto; border-radius:11px; margin:4px 0 0;
 .reading .rlbl{display:block; font-family:var(--mono); font-size:9.5px;
   letter-spacing:.17em; text-transform:uppercase; color:var(--accent);
   margin-bottom:8px}
-.reading p{margin:0 0 9px; font-size:14.5px; color:var(--fg); line-height:1.65}
+.reading p{margin:0 0 10px; font-size:14.5px; color:var(--mut); line-height:1.68}
+.reading p.rbottom{color:#fff; font-size:16.5px; font-weight:500;
+  font-family:"Space Grotesk",Inter,sans-serif; letter-spacing:-.008em;
+  line-height:1.45; margin-bottom:12px}
 .reading p:last-child{margin-bottom:0}
 .panel .reading{margin:16px 0 0}
 .figcap .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:16px}
@@ -518,15 +526,21 @@ def _reading(lines) -> str:
     """
     What this particular run shows, computed from its own numbers.
 
-    Deliberately separate from FIGURE_NOTES, which describe the figure in
-    general. These sentences are derived from the result on screen, so they stay
-    true for an uploaded spectrum the model has never seen, and for a future
-    checkpoint where the current defects are fixed.
+    Separate from FIGURE_NOTES, which describe the figure in general. These
+    sentences are derived from the result on screen, so they stay true for an
+    uploaded spectrum the model has never seen, and for a future checkpoint
+    where the current defects are fixed.
+
+    Items are (kind, text). The "bottom" line leads and is styled as the
+    headline, because a reader wants the conclusion before the evidence.
     """
     if not lines:
         return ""
-    body = "".join(f"<p>{html.escape(t)}</p>" for t in lines)
-    return (f'<div class="reading"><span class="rlbl">What this one is telling '
+    body = ""
+    for kind, text in lines:
+        cls = "rbottom" if kind == "bottom" else ""
+        body += f'<p class="{cls}">{html.escape(text)}</p>'
+    return (f'<div class="reading"><span class="rlbl">What this is telling '
             f'you</span>{body}</div>')
 
 
@@ -810,28 +824,28 @@ is physics, and it shows in the accuracy table.</p></div>
 
 
 RUNS = [
-    ("Run 1", "Mar 2026", "&mdash;",
+    ("Run 1",
      "First end-to-end training. 57M samples across 8 sources.",
      "The infrastructure worked. Nothing else did: the sequential loss term was "
      "identically zero and every parameter was out of range."),
-    ("Run 2", "9 Apr 2026", "$280",
+    ("Run 2",
      "First serious run. 45 epochs, batch 2048, full curriculum.",
      "Matter density and clustering amplitude came in strong. The sequential "
      "loss was still dead, traced to a two-pass forward bug."),
-    ("Run 3", "12 Apr 2026", "$54",
+    ("Run 3",
      "Fixed the sequential loss, reweighted the objective, enabled torch.compile.",
      "1.64&times; throughput. The expansion rate got worse, not better, because "
      "one shared belief-proposal module was serving two incompatible jobs."),
-    ("Run 4", "14 Apr 2026", "$94",
+    ("Run 4",
      "Split that module into separate joint and sequential paths. Fixed a state "
      "leak in the settling core.",
      "The released checkpoint. Expansion rate improved most, and calibration hit "
      "a ceiling that later turned out to be the uncertainty head's clamp floor."),
-    ("Runs 5&ndash;8", "May 2026", "$145",
+    ("Runs 5&ndash;8",
      "Seven architectural variants, chasing what looked like a hard ceiling.",
      "All of it inconclusive. The evaluation noise was larger than every effect "
      "being measured, so none of those experiments could have shown anything."),
-    ("The audit", "Sep 2026", "$0",
+    ("The audit",
      "Stopped training. Read the weights instead.",
      "The belief pipeline had never received a gradient, and the energy heads had "
      "collapsed to a constant. The ceiling was a defect, not physics."),
@@ -841,11 +855,9 @@ RUNS = [
 def _evolution() -> str:
     rows = "".join(
         f'<tr><td><strong>{name}</strong></td>'
-        f'<td class="dim" style="white-space:nowrap">{when}</td>'
-        f'<td class="num dim">{cost}</td>'
         f'<td class="muted">{changed}</td>'
         f'<td class="muted">{learned}</td></tr>'
-        for name, when, cost, changed, learned in RUNS)
+        for name, changed, learned in RUNS)
     return f"""<section id="evolution"><div class="wrap">
 {_shead("06", "How it got here", "Four training runs, then a decision to stop training.",
         "The useful history is not a score table. It is what each run changed "
@@ -853,8 +865,8 @@ def _evolution() -> str:
         "trustworthy than they looked.")}
 <div class="sbody">
 <div class="panel"><div class="tw"><table>
-<tr><th>run</th><th>when</th><th class="num">cost</th><th>what changed</th>
-<th>what it taught</th></tr>{rows}</table></div></div>
+<tr><th>run</th><th>what changed</th><th>what it taught</th></tr>
+{rows}</table></div></div>
 
 <div class="panel warn">
 <p class="muted" style="margin:0"><span class="lead-in">Why there are no
@@ -1164,7 +1176,9 @@ of its norm during settling; energy changed by {report.energy_drop:.2e}, which i
 {truth_note}{dl}</div>
 {_timing_panel(t)}
 {_figblock("settling", fig_settle, read_settling(report))}
-{_figblock("pk", fig_pk, read_pk(K_GRID, pk0, pk047, result.pk_recon, result.log_k))}
+{_figblock("pk", fig_pk, read_pk(K_GRID, pk0, pk047, result.pk_recon,
+                                 result.log_k, reference=BENCH_LOGPK,
+                                 has_truth=truth is not None))}
 <details><summary>Full result as JSON</summary>
 <pre><code>{html.escape(json.dumps(payload, indent=2))}</code></pre></details>"""
 
