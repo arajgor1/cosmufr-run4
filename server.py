@@ -34,6 +34,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 
 import cosmufr
 from cosmufr import figures as F
+from cosmufr.diagram import architecture_svg
 from cosmufr.explain import FIGURE_NOTES, PARAM_MEANING
 from cosmufr.load import PARAM_LABELS
 from cosmufr.validate import K_GRID, validate_spectra
@@ -231,6 +232,12 @@ section{padding:104px 0; border-bottom:1px solid var(--hair); position:relative}
   font-weight:600; color:#fff; letter-spacing:-.01em}
 .card p{margin:0; font-size:14px; color:var(--mut); line-height:1.62}
 
+.diagram{border:1px solid var(--line); border-radius:14px; padding:22px 20px 14px;
+  background:linear-gradient(180deg,rgba(255,255,255,.03),rgba(255,255,255,.008));
+  margin:22px 0; overflow-x:auto}
+.diagram svg{display:block; width:100%; min-width:720px; height:auto}
+.diagram .cap{font-family:var(--mono); font-size:9.5px; letter-spacing:.15em;
+  text-transform:uppercase; color:var(--dim); margin:0 0 12px}
 .chips{display:flex; gap:8px; flex-wrap:wrap; margin-top:20px}
 .chip{font-family:var(--mono); font-size:10.5px; letter-spacing:.09em;
   color:var(--dim); border:1px solid var(--hair); border-radius:6px;
@@ -570,6 +577,14 @@ once; using it costs one pass.</p></div>
 <p>How much matter, how clumpy, how fast the expansion, what the dark energy is
 doing. Plus, honestly, which of those it does not yet get right.</p></div>
 </div>
+
+<h3 class="display" style="font-size:21px; margin:44px 0 6px">The path a spectrum takes</h3>
+<p class="muted" style="max-width:66ch; margin:0 0 6px">Four hundred numbers go in
+on the left. The encoder turns them into a 1024-dimensional "belief" about which
+universe this is, sixteen refinement steps are meant to sharpen that belief, and
+three read-out heads turn it into answers.</p>
+<div class="diagram"><p class="cap">Inference path &middot; one forward pass</p>
+{architecture_svg()}</div>
 
 <p class="muted" style="margin-top:26px">This release is an early, working, and
 openly flawed attempt at that. Everything below is measured rather than claimed,
@@ -1101,6 +1116,12 @@ weights say it never trained. What learned is the read-out heads, reading a fixe
 random projection of the input. The numbers in section 04 are real, and they were
 produced by a simpler machine than the architecture diagram claims.</p>
 </div>
+
+<h3 class="display" style="font-size:20px; margin:34px 0 6px">The same diagram, marked up</h3>
+<p class="muted" style="max-width:66ch; margin:0 0 6px">This is the picture from
+section 00 again, with each block coloured by what its weights actually show.</p>
+<div class="diagram"><p class="cap">Inference path &middot; what the weights say</p>
+{architecture_svg(audit=True)}</div>
 
 <p class="muted">A <code>Linear</code> bias is initialised from a random draw, and
 any optimizer step moves it. Eighty-four of them are still bit-exactly

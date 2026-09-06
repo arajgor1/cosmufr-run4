@@ -86,21 +86,31 @@ def test_bundled_benchmark_tracks_the_full_validation_split():
     """
     The bundled subset must be representative, not flattering.
 
-    An earlier version of the benchmark sampled evenly across sources instead
-    of proportionally. That changed the source mix, and therefore the variance
-    R2 divides by, dropping Om from 0.72 to 0.17 without the model changing at
-    all. This test guards against that class of mistake.
-    """
-    report = json.loads(REPORT.read_text())
-    full = report["full_val_metrics"]
-    bench = report["benchmark"]["metrics"]
+    This ACTUALLY RUNS THE MODEL. An earlier version of this test compared two
+    numbers read out of the same committed JSON file and never loaded a
+    checkpoint at all, so it could only fail if someone hand-edited the report.
+    It is the benchmark's representativeness that matters, and that is a
+    property of running the model on it.
 
+    An earlier version of the benchmark itself sampled evenly across sources
+    instead of proportionally. That changed the source mix, and therefore the
+    variance R2 divides by, dropping Om from 0.72 to 0.17 without the model
+    changing at all. This guards against that class of mistake.
+    """
+    full = json.loads(REPORT.read_text())["full_val_metrics"]
+
+    model = cosmufr.load_model(ckpt_path=CKPT)
+    result = cosmufr.evaluate(model, cosmufr.load_benchmark())
+
+    checked = 0
     for lbl, blk in full.items():
-        a, b = blk["r2"], bench[lbl]["r2"]
-        if a is None or b is None:
+        want, got = blk["r2"], result.overall[lbl]["r2"]
+        if want is None or got is None:
             continue
-        assert abs(a - b) < BENCH_VS_FULL_TOL, (
-            f"{lbl}: bundled benchmark R2 {b:.3f} drifts from the full split "
-            f"{a:.3f} by more than {BENCH_VS_FULL_TOL}. The subset is not "
-            f"representative."
+        checked += 1
+        assert abs(got - want) < BENCH_VS_FULL_TOL, (
+            f"{lbl}: the benchmark gives R2 {got:.3f} where the full split gives "
+            f"{want:.3f}, a gap of {abs(got-want):.3f}. The bundled subset is not "
+            f"representative of the split it was drawn from."
         )
+    assert checked >= 6, f"only {checked} parameters were comparable"

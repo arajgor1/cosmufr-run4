@@ -1,217 +1,273 @@
-# CosmUFR Run 4
+# CosmUFR
 
-**Neural inference of cosmological parameters from the matter power spectrum, released together with the audit that found its central defect.**
+**From a sky measurement to a cosmology, in a quarter of a second.**
 
-CosmUFR takes `log10 P(k)` at two redshifts and infers eight cosmological parameters jointly. It is a 136M-parameter network built around a belief-settling core: encode the spectrum into a 1024-dimensional belief, then refine that belief through 16 steps of gradient descent on a learned energy.
+CosmUFR reads the matter power spectrum at two redshifts and returns eight
+cosmological parameters in a single forward pass. No simulator in the loop, no
+likelihood, no chain to converge.
 
-That was the design. This release documents what the trained weights actually do, which is not the same thing.
-
----
-
-## What this release is
-
-Three artifacts, in order of importance:
-
-1. **A working inference stack.** Loads in under two seconds, runs in ~400 ms on CPU, bit-deterministic across repeated calls.
-2. **A benchmark you can check it against.** 6,000 rows of the validation split, committed to this repository. Every number below regenerates on your machine in one command.
-3. **An audit of the model's own defects**, reproducible from the released weights with `cosmufr.weight_audit()`.
-
-It is an in-progress PhD project, shared as-is. The defects below are stated because they are real, not as a rhetorical device.
+> **Live demo:** https://aadityarajgor27--cosmufr-demo-serve.modal.run
+> **Weights:** https://huggingface.co/arajgor1/cosmufr-run4
 
 ---
 
-## The finding
+## Why this exists
 
-The belief pipeline this architecture is named for never trained.
+A telescope survey measures where hundreds of millions of galaxies are. Turning
+that into a statement about the universe means running the physics backwards,
+and that inversion is the slow part.
 
+The conventional route is guess, simulate, compare, repeat. Hundreds of
+thousands of times, until the guesses converge. It is reliable and it costs
+CPU-days to CPU-weeks per analysis.
+
+The alternative this project tests: train a network on millions of simulated
+universes until it learns the inverse directly, then a new measurement is one
+forward pass. If that works, analyses currently priced out by compute become
+routine.
+
+This release is an early, working, and openly flawed attempt at that. Everything
+below is measured rather than claimed, the test data ships with the code, and
+the parts that do not work are named.
+
+---
+
+## How it works
+
+```mermaid
+flowchart LR
+  A["P(k) at z=0<br/><small>200 values</small>"] --> E
+  B["P(k) at z=0.47<br/><small>200 values</small>"] --> E
+  E["ObsEncoder<br/><small>400 → 1024</small>"] --> P["BeliefProposal<br/><small>the first guess</small>"]
+  P --> S["SettlingCore<br/><small>16 refinement steps</small>"]
+  N["Energy heads<br/><small>define the landscape</small>"] --> S
+  S -->|"b*"| H1["ParameterHead"]
+  S --> H2["UncertaintyHead"]
+  S --> H3["GenerativeHead"]
+  H1 --> O["Cosmology<br/><small>Ωm σ8 h ns Ωb w0 mν wa</small>"]
+
+  classDef io fill:#0d1b2e,stroke:#60a5fa,color:#e8eaee
+  classDef core fill:#141418,stroke:#8a91a0,color:#e8eaee
+  class A,B,O io
+  class E,P,S,N,H1,H2,H3 core
 ```
->>> print(cosmufr.weight_audit(model).table())
 
-module                  on path  n Linear   biases == 0   max |bias|     verdict
---------------------------------------------------------------------------------
-belief_proposal             yes        10     10/10        0.000e+00   UNTRAINED
-obs_encoder                 yes        10     10/10        0.000e+00   UNTRAINED
-settling                    yes        64     64/64        0.000e+00   UNTRAINED
-halo_head                   yes         6      6/6         0.000e+00   UNTRAINED
-gen_head                    yes        18      0/18        8.653e-01     trained
-param_head                  yes         6      0/6         4.632e-01     trained
-unc_head                    yes         6      0/6         3.927e-01     trained
+Four hundred numbers go in. The encoder turns them into a 1024-dimensional
+"belief" about which universe this is, sixteen refinement steps are meant to
+sharpen that belief, and three read-out heads turn it into answers.
+
+That is the design. The next section is what the trained weights actually do.
+
+---
+
+## The audit
+
+I stress-tested my own model. It failed.
+
+```mermaid
+flowchart LR
+  A["P(k) at z=0"] --> E
+  B["P(k) at z=0.47"] --> E
+  E["ObsEncoder<br/><small>never trained</small>"] --> P["BeliefProposal<br/><small>never trained</small>"]
+  P --> S["SettlingCore<br/><small>never trained</small>"]
+  N["Energy heads<br/><small>trained, went flat</small>"] --> S
+  S --> H1["ParameterHead<br/><small>trained, works</small>"]
+  S --> H2["UncertaintyHead<br/><small>stuck at its floor</small>"]
+  S --> H3["GenerativeHead<br/><small>returns a constant</small>"]
+  H1 --> O["Cosmology"]
+
+  classDef io fill:#0d1b2e,stroke:#60a5fa,color:#e8eaee
+  classDef dead fill:#2a1410,stroke:#E2643B,color:#f0d6cd
+  classDef degen fill:#2a2110,stroke:#E6A23C,color:#f0e6cd
+  classDef ok fill:#0e241c,stroke:#3FBF8F,color:#d6f0e6
+  class A,B io
+  class E,P,S dead
+  class N,H2,H3 degen
+  class H1,O ok
 ```
 
-A `Linear` bias that has taken even one optimizer step essentially never returns to exactly `0.0`. Eighty-four of them are still bit-exactly zero after forty epochs.
+**The belief-settling core that gives this architecture its name never received
+a gradient.** A `Linear` bias is initialised from a random draw and any
+optimizer step moves it. Eighty-four of them are still bit-exactly `0.0` after
+forty epochs. Verify in about seven seconds:
 
-"Trained" in that table means only that a module's weights moved. Two of the three that moved are degenerate anyway: `unc_head` sits at its clamp floor and `gen_head` collapsed to emitting a single constant. `param_head` is the only part of this model doing useful work.
+```python
+import cosmufr
+print(cosmufr.weight_audit(cosmufr.load_model()).table())
+```
 
-The confirming measurement compares Run 2's checkpoint against Run 4's. Run 4 was warm-started from Run 3, itself warm-started from Run 2, then trained forty further epochs:
+The cause is visible in released source, no checkpoint needed.
+`SettlingCore.forward` detaches the belief on entry to every step:
 
-| Module | Tensors | Bit-identical | Mean relative change |
-|---|---|---|---|
-| obs_encoder | 38 | 38 / 38 | 0.000e+00 |
-| belief_proposal | 38 | 38 / 38 | 0.000e+00 |
-| settling | 128 | 128 / 128 | 0.000e+00 |
-| param_head | 24 | 2 / 24 | 7.55e-01 |
-| gen_head | 70 | 0 / 70 | 6.59e-01 |
-| energy heads | 66 | 0 / 66 | 7.4e+29 |
+```python
+for step in range(k):
+    b = b.detach()                      # <- severs everything upstream
+    with torch.enable_grad():
+        b_g = b.requires_grad_(True)
+        E = energy_fn(b_g, z.detach(), b_prev.detach())
+        grad = torch.autograd.grad(E.sum(), b_g)[0]
+    b = b - eta * P * grad.detach()
+```
 
-Zero relative change across three training runs is not slow learning. It is no gradient. The read-out heads moved by 66 to 79 percent, so training clearly ran; it simply never reached the encoder. Reproduce with `cosmufr.compare_checkpoints(run2_path, run4_path)`.
+**And a second cause, which is worse.** The energy heads *did* train, through
+their own optimizer, and converged on a constant. Energy varies by about one
+part in seven million across completely different spectra, and its gradient has
+norm 0.11 against a belief of norm 16.5. Repairing the gradient path alone would
+not make settling work: there would still be no landscape to descend. That is a
+harder problem than the one I first reported, and I do not have a fix for it.
 
-**What the model therefore is:** trained read-out heads on a fixed random projection of the input. Random projections preserve a great deal of structure, which is why the results below are respectable. It also means they are a floor for this architecture rather than a ceiling.
-
-**Consequences you will see in the demo.** Settling moves the belief by 0.09 percent of its norm, and its energy changes by one float32 unit at the magnitude it operates at, which is the smallest change the number can represent. The uncertainty head is pinned at its clamp floor, so every reported σ is the constant 0.1 and none of them are usable error bars. The generative head returns a single constant at every k for every input, so the P(k) reconstruction is not a reconstruction.
+Independently confirmed by diffing Run 2's checkpoint against Run 4's, forty
+epochs apart: 204 of 204 tensors in those three modules are bit-identical, while
+the read-out heads moved 66 to 79 percent.
 
 ---
 
 ## Results
 
-Measured with the released package on the deterministic validation split, 162,795 rows across 16 sources. Full report in [`reports/honest_eval.json`](reports/honest_eval.json).
+Measured with the released package on a deterministic split of 162,795 held-out
+spectra across 16 simulation suites. Full report in
+[`reports/honest_eval.json`](reports/honest_eval.json).
 
-| Parameter | Published 2026-05 | Full validation | Where it varies | Bundled benchmark | RMSE |
-|---|---|---|---|---|---|
-| Ω_m | 0.907 | **0.717** | 0.720 | 0.687 | 0.0273 |
-| σ₈ | 0.911 | **0.756** | 0.757 | 0.738 | 0.0285 |
-| h | 0.604 | **0.501** | 0.498 | 0.475 | 0.0402 |
-| w₀ | 0.742 | **0.586** | 0.614 | 0.599 | 0.0254 |
-| m_ν | 0.410 | 0.407 | **0.011** | 0.410 | 0.0993 |
-| Ω_b | 0.406 | **0.364** | 0.363 | 0.353 | 0.0045 |
-| n_s | 0.353 | **0.338** | 0.339 | 0.331 | 0.0214 |
-| w_a | 0.187 | **0.165** | 0.185 | 0.148 | 0.0616 |
+| Parameter | All test data | Where it varies | Bundled benchmark | Verdict |
+|---|---|---|---|---|
+| Ω_m | 0.717 | **0.720** | 0.687 | recovered |
+| σ₈ | 0.756 | **0.757** | 0.738 | recovered |
+| w₀ | 0.586 | **0.614** | 0.599 | recovered |
+| h | 0.501 | **0.498** | 0.475 | partial |
+| Ω_b | 0.364 | **0.363** | 0.353 | partial |
+| n_s | 0.338 | **0.339** | 0.331 | partial |
+| w_a | 0.165 | **0.185** | 0.148 | weak |
+| Σm_ν | 0.407 | **0.011** | 0.410 | not recovered |
 
-The "published" column is superseded and is shown only so the change is visible. Those numbers came from the training-time evaluator on a validation set that was later corrected, with epoch 30 selected as best from inside ±0.03 to 0.10 evaluation noise. They should not be cited.
+**Read the second column.** R² measures how much of the spread in the truth the
+model explains. On data where a parameter is held at a fixed value there is no
+spread, so the score is meaningless. "Where it varies" restricts each parameter
+to the data that actually varies it. For neutrino mass that is the whole story:
+it looks competent at 0.41 and is 0.011 once measured honestly.
 
-**"Where it varies"** computes each parameter only on the sources that actually vary it. R² is a ratio against the variance of the truth, so on a slice where a parameter is held at a fiducial constant it measures nothing. This column is the one to read, and for m_ν it is the whole story: the apparent 0.41 was an artifact of m_ν being pinned at zero throughout most of the corpus, where predicting near-zero scores well without recovering anything. **The model does not constrain neutrino mass.**
+**What reproduces.** The bundled 6,000-case benchmark ships in this repository
+and regenerates its own column to about 1e-6 on any machine. The full-test
+column came from a private split and cannot be checked from outside. The
+benchmark lands within about 0.03 of it and narrows that gap rather than closing
+it.
 
-### Why the aggregate is lower than it looks
-
-| Source | n | Ω_m | σ₈ | h | n_s | Ω_b | w₀ | m_ν | w_a |
-|---|---|---|---|---|---|---|---|---|---|
-| bacco | 23,997 | 0.99 | 0.99 | 0.68 | 0.58 | 0.36 | -- | -- | -- |
-| bcemu | 23,997 | 0.99 | 0.74 | 0.75 | 0.25 | 0.72 | -- | -- | -- |
-| spk | 23,997 | 0.98 | 0.98 | 0.66 | 0.66 | 0.35 | -- | -- | -- |
-| bacco_neutrino | 23,997 | 0.99 | 0.99 | 0.67 | 0.58 | 0.31 | -- | 0.52 | -- |
-| bacco_full8 | 23,997 | 0.99 | 0.99 | 0.63 | 0.24 | 0.34 | 0.61 | 0.08 | 0.19 |
-| **bacco_multiz** | 23,997 | -0.00 | -0.00 | -0.00 | -0.00 | 0.00 | -- | -0.00 | -- |
-| bcemu_neutrino | 10,000 | 0.99 | 0.74 | 0.75 | 0.23 | 0.72 | -- | -1.34 | -- |
-| dark_emulator | 5,001 | 0.87 | 0.93 | -- | 0.30 | -- | 0.86 | -- | -- |
-| ns_grid | 2,500 | -0.58 | -0.23 | -7.88 | -0.38 | -0.14 | -- | -- | -- |
-| camb_nl | 1,000 | 0.98 | 0.99 | -- | -- | -- | -- | -- | -- |
-| camels_astrid_x | 250 | -0.06 | -0.34 | -5.08 | -0.78 | -0.02 | 0.03 | -- | -0.03 |
-
-`--` marks a parameter pinned in that source, where R² is undefined.
-
-`bacco_multiz` is 15 percent of the validation set and scores zero on everything. Its z=0.47 spectra are self-paired copies of its z=0 spectra, so both input channels are identical and carry no growth information. That is a data-generation defect, documented in the corpus source registry, not a model failure. On sources where the data is sound, Ω_m recovery reaches 0.98 to 0.99.
-
-Both readings are true and both are shown. The aggregate is what the model achieves on the corpus as it stands; the per-source table is what it achieves on data without a known defect.
+**Why the headline is lower than the model deserves.** One suite,
+`bacco_multiz`, is 15 percent of the test set and scores zero on everything,
+because its two redshift channels are identical copies and carry no growth
+information. That is a data-generation defect. On suites with sound data, matter
+density comes back at 0.98 to 0.99.
 
 ---
 
-## Reproduce every number above
+## Baseline
 
-This is the part that matters. The original Run 4 table could not be checked by anyone outside the training infrastructure. This one can.
+The first question anyone should ask about a 136M-parameter network is whether
+something simple does just as well. Ridge regression on the same 400 inputs, fit
+on half the benchmark, both models scored on the same held-out half:
 
-```bash
-git clone https://github.com/arajgor1/cosmufr-run4
-cd cosmufr-run4
-pip install -e ".[demo]"
-python -m cosmufr.reproduce          # downloads weights, runs the benchmark
-```
+| Parameter | Ridge, 400 features | CosmUFR, 136M | Winner |
+|---|---|---|---|
+| Ω_m | **0.738** | 0.716 | ridge |
+| σ₈ | 0.734 | **0.777** | cosmufr |
+| h | 0.417 | **0.496** | cosmufr |
+| n_s | 0.205 | **0.343** | cosmufr |
+| Ω_b | 0.312 | **0.353** | cosmufr |
+| w₀ | −0.014 | **0.612** | cosmufr |
+| Σm_ν | 0.242 | **0.423** | cosmufr |
+| w_a | 0.018 | **0.170** | cosmufr |
 
-Or in Python:
+CosmUFR is ahead on seven of eight. A plain linear fit beats it on matter
+density, which is a real and slightly uncomfortable result: that parameter is
+written into the height of the curve and you do not need a large network to read
+it. The network earns its keep on parameters that are subtle or that the
+training data barely varies.
 
-```python
-import cosmufr
-
-model  = cosmufr.load_model()                  # pulls best.pt from HuggingFace
-bench  = cosmufr.load_benchmark()              # ships in this repo, 6,000 rows
-result = cosmufr.evaluate(model, bench)
-
-print(result.table())          # the headline table
-print(result.source_table())   # the per-source breakdown
-```
-
-If your numbers differ from `reports/honest_eval.json`, that is a bug worth reporting.
-
-The bundled benchmark is a proportional subsample of the full split, so its aggregate differs from the full-split value by sampling noise of up to about 0.03. It is proportional rather than evenly stratified for a reason: an earlier version sampled evenly across sources, which changed the source mix and therefore the variance R² divides by, and dropped Ω_m from 0.72 to 0.17 without the model changing at all. `tests/test_reproducibility.py` guards against that.
+Both caveats favour ridge, which is fit on rows from the same suites it is
+tested on while CosmUFR has never seen any of these spectra. Rerun with
+`python scripts/ridge_baseline.py`.
 
 ---
 
 ## Quick start
 
+```bash
+git clone https://github.com/arajgor1/cosmufr-run4
+cd cosmufr-run4
+pip install -e ".[demo]"
+python -m cosmufr.reproduce          # downloads weights, regenerates the tables
+```
+
 ```python
 import cosmufr
-import numpy as np
 
-model = cosmufr.load_model(ckpt_path="best.pt")
-
-bench  = cosmufr.load_benchmark()
+model  = cosmufr.load_model()        # pulls best.pt from HuggingFace
+bench  = cosmufr.load_benchmark()    # 6,000 held-out spectra, ships in this repo
 result = cosmufr.infer(bench.pk_z0[0], bench.pk_z047[0], model=model)
 
-print(result.params)   # {'Om': 0.387, 's8': 0.672, 'h': 0.669, ...}
-print(result.pk_recon) # reconstructed log10 P(k)
-# result.sigmas is the clamp floor on every input. Do not use it as an error bar.
-# result.pk_recon is a constant, not a reconstruction. See defect 9.
+print(result.params)                 # {'Om': 0.387, 's8': 0.672, ...}
+# result.sigmas   is the clamp floor on every input. Not an error bar.
+# result.pk_recon is a constant, not a reconstruction. See defect 4.
 ```
 
-Inputs are `P(k)` on a 200-bin log-spaced grid over k ∈ [0.1, 4.5] h/Mpc, at z=0 and z=0.47. Raw or log10 are both accepted and auto-detected.
-
-### Inspect the defects yourself
-
-```python
-print(cosmufr.weight_audit(model).table())
-print(cosmufr.settling_report(model, bench.pk_z0[0], bench.pk_z047[0]).summary())
-print(cosmufr.uncertainty_audit(result.sigmas_array[None, :]).table())
-```
+Inputs are `P(k)` on 200 log-spaced bins over k ∈ [0.1, 4.5] h/Mpc, at z=0 and
+z=0.47, in (Mpc/h)³. Raw `P(k)` or `log10 P(k)` are both accepted.
+[`examples/01_quickstart.ipynb`](examples/01_quickstart.ipynb) walks the whole
+thing end to end.
 
 ---
 
-## Known defects
+## Roadmap
 
-Stated in full, because a reader will find all of them within ten minutes.
+**Where it is today.** A working, audited baseline. 245 ms inference on a CPU,
+bit-deterministic, trained on 84.5M spectra across 14 suites. Matter density and
+clustering amplitude at R² 0.98 to 0.99 on sound data. A 6,000-case benchmark
+and a linear baseline both published, including where the baseline wins.
 
-1. **The belief pipeline never trained.** `obs_encoder`, `belief_proposal` and `settling` are at initialization. The architecture's central claim is unsupported by its own weights. Root cause traced to an unconditional `detach()` in the settling loop introduced in commit `a5caac6`.
-2. **Settling is a no-op.** 0.09 percent mean belief movement; energy flat to one float32 unit; 314 of 318 validation batches show exactly zero energy change.
-3. **Uncertainties are a constant.** `UncertaintyHead` returns `clamp(softplus(net(b)) + 1e-2, max=4.0)` and sits at the floor, so σ = 0.1 for six of eight parameters on 100 percent of inputs. These are not error bars. Reported ECE of 0.39 follows directly from this.
-4. **m_ν is not recovered.** R² = 0.011 where m_ν varies.
-5. **The energy subsystem is divergent.** Energy sits near −9.3e5 and its heads drifted by ~7e29 in relative norm during training. The `E_con` anomaly score is around −4.6e5, five orders of magnitude from the −0.999908 quoted in earlier material. Do not use it as an out-of-distribution signal.
-6. **Two redshifts only** (z=0 and z=0.47). Multi-redshift generalization is not validated, and the multi-redshift corpus has a documented ordering defect.
-7. **Evaluation noise was never controlled.** Epoch-to-epoch R² noise of ±0.03 to 0.10 means historical cross-run comparisons in this project's development logs are not trustworthy.
-8. **The architecture flags** `use_explicit_z`, `use_source_aware` and `use_multi_z_encoder` are hard-coded off. The checkpoint was trained without them.
-9. **The generative head collapsed to a constant.** `GenerativeHead` is documented as reconstructing `log10 P(k)` at arbitrary k. It returns 2.6327 at every k, for every input spectrum, and for a random belief vector, with measured variation of 2e-7 in both directions. Its reported log-space MSE of 0.687 is simply the variance of `log10 P(k)` about a constant, which is what a predictor that ignores its input scores. There is no reconstruction.
+**Next, and costed.** Repair the severed gradient path, guarded by the unit test
+that would have caught it originally, which is free and verifiable before any
+training spend. Then the harder one: fix the flat energy landscape. Give the
+uncertainty head a floor it can leave. Rebalance a corpus that pins dark energy
+at its fiducial value in 86 percent of samples. Then one pre-registered training
+run with a pass/fail threshold set in advance, roughly $15.
 
----
-
-## What I think should happen next
-
-I am publishing this to get expert judgement on the following, which is also what I would want to work on in a PhD.
-
-**Things I can verify at zero cost and intend to do:**
-
-- Remove the `detach()` that severs the gradient, and gate the fix behind the gradient-flow test in `tests/test_gradient_flow.py`, which would have caught this on the day it was introduced.
-- Bound the energy heads so the energy term stops diverging.
-- Give the uncertainty head a variance floor it can actually leave.
-- Fix the evaluation protocol: a frozen versioned split, metrics averaged over several epochs rather than single-epoch best, and per-parameter R² computed only where the parameter varies.
-
-**Things I do not know how to judge, and want advice on:**
-
-- Whether the belief-settling formulation is worth pursuing once the gradient path is repaired, or whether it is an expensive way to reach what an amortized posterior estimator gets in one forward pass. I have no baseline, and I know that is the first thing a reviewer would ask for.
-- How much of the weakness in h, w₀ and w_a is a genuine information limit of `log P(k)` at two redshifts, and how much is the training corpus pinning those parameters at fiducial values in 45 to 88 percent of samples.
-- Whether extending to higher k, more redshifts, or explicit BAO features is the right way to make h and m_ν identifiable, and what a defensible experimental design for that looks like.
-
-The broader question I want to work on is using learned inference to shorten the analysis loop between survey observation and parameter constraints. This model is where I started on it, defects included.
+**Open questions I want advice on.** Is iterative belief refinement worth
+pursuing at all once the gradient path works, or does an amortized posterior
+estimator get there in one pass? How much of the weakness in h, w₀ and w_a is a
+real information limit of `P(k)` and how much is training coverage? Would higher
+k, more redshifts, or explicit acoustic-scale features make h identifiable?
 
 ---
 
-## Architecture
+## Limitations
 
-Input is `log10 P(k)` at two redshifts, concatenated to a 400-d vector. `ObsEncoder` maps it to a 1024-d belief. `BeliefProposal` combines that with a previous belief. `SettlingCore` runs 16 steps of gradient descent on `E = 1.0·E_obs + 0.5·E_con + 0.5·E_dyn`, with a per-step learned preconditioner in [0.01, 1.0] and step size in [0.001, 0.05]. The settled belief feeds `ParameterHead` (8 parameters, sigmoid-clamped to physical priors), `UncertaintyHead` (8 variances) and a k-continuous `GenerativeHead` intended to reconstruct `log10 P(k)` at arbitrary k. There is no attention anywhere.
+1. **The belief pipeline never trained.** Encoder, belief proposal and settling
+   core sit at initialization.
+2. **The energy landscape is flat.** The energy heads collapsed to an
+   input-independent constant, so there is nothing to descend.
+3. **Reported uncertainties are meaningless.** σ = 0.1 for six of eight
+   parameters on every input. Do not use them.
+4. **The P(k) reconstruction is a constant.** The generative head returns the
+   same value at every scale, for every input, and for a random belief vector.
+   Its reported MSE of 0.687 is the variance of `log10 P(k)` about a constant.
+5. **Neutrino mass is not recovered.** R² = 0.011 where it varies.
+6. **The anomaly score is not usable.** The energy subsystem diverged; `E_con`
+   sits around −4.6e5, five orders of magnitude from the value quoted in earlier
+   material.
+7. **Two redshifts only.** Multi-redshift generalization is unvalidated and that
+   corpus has a documented ordering defect.
+8. **The headline table is not externally reproducible.** It was measured on a
+   private split; the bundled benchmark narrows that gap to about 0.03.
+9. **No ablation.** There is a linear baseline but no ablation of the
+   architecture's own components.
+10. **Historical cross-run comparisons in this project are untrustworthy**,
+    because epoch-to-epoch R² noise of ±0.03 to 0.10 was never controlled for.
 
-Per the audit, only `ParameterHead` does useful work. The belief pipeline never trained; the uncertainty head sits at its clamp floor; the generative head returns a constant; the energy heads diverged.
+Earlier published figures for this model (Ω_m 0.907, σ₈ 0.911, h 0.604) are
+superseded and should not be cited. They came from the training-time evaluator
+on a validation set that was later corrected, with a checkpoint selected as best
+from inside that noise.
 
-## Training summary
-
-- 136,194,617 parameters
-- 84.5M cosmology → P(k) samples across 14 source datasets (CAMB, CAMELS, BACCO, Quijote, BCemu, DarkEmulator, SPk, plus n_s, w₀ and multi-redshift grids)
-- Phase 4 fine-tune on a single B200, batch 4096, BF16, completed 2026-04-14
-- Two optimizers: one for the core, one for the energy heads
+---
 
 ## Provenance
 
@@ -219,8 +275,9 @@ Per the audit, only `ParameterHead` does useful work. The belief pipeline never 
 |---|---|
 | Checkpoint | `best.pt`, epoch 30, phase 4 |
 | SHA256 | `5db09d4ff02316c60a43e08fa242223d3243f4f224b625798eaf385151150fc1` |
-| Size | 544,931,631 bytes |
-| Evaluated | 2026-09-04, released package, deterministic split |
+| Parameters | 136,194,617 |
+| Trained | 2026-04-14, single B200, batch 4096, BF16 |
+| Re-measured | 2026-09-04, released package, deterministic split |
 
 ## Repository
 
@@ -229,25 +286,30 @@ cosmufr/
   inference.py      cosmufr.infer(...)
   benchmark.py      load_benchmark(), evaluate()
   diagnostics.py    weight_audit(), settling_report(), compare_checkpoints()
+  validate.py       input checking with specific errors
   figures.py        every figure, from real tensors
-  model.py          architecture, frozen for this checkpoint
-benchmark/          the 6,000-row evaluation set
-reports/            measured results
+  diagram.py        the architecture diagram, both modes
+  reproduce.py      python -m cosmufr.reproduce
+benchmark/          the 6,000-case evaluation set
+reports/            measured results and the ridge baseline
+scripts/            ridge_baseline.py
 tests/              determinism, reproducibility, gradient flow
 examples/           notebook walkthrough
-app.py              Gradio demo
+server.py           the live site and demo
+app.py              a Gradio version, for local use
 ```
 
 ## Citation
 
-```
+```bibtex
 @misc{cosmufr_run4_2026,
-  title  = {CosmUFR Run 4: a belief-settling network for cosmological parameter
-            inference, with an audit of its training defects},
+  title  = {CosmUFR: learned inference of cosmological parameters from the
+            matter power spectrum, with an audit of its training defects},
   author = {Rajgor, Aaditya},
   year   = {2026},
   url    = {https://github.com/arajgor1/cosmufr-run4}
 }
 ```
 
-MIT licensed. See [LICENSE](LICENSE).
+MIT licensed. If you work on cosmological inference and any of the open
+questions above look answerable, I would like to hear from you.

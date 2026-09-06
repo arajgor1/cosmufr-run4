@@ -61,19 +61,22 @@ def test_infer_shapes_and_ranges():
     assert result.log_k.shape == (200,)
     assert len(result.energy_log) == 17  # 1 init + 16 settling steps
 
-    # Param ranges (sigmoid-clamped to physical priors)
-    p = result.params
-    assert 0.10 <= p["Om"] <= 0.50
-    assert 0.52 <= p["s8"] <= 1.00
-    assert 0.60 <= p["h"]  <= 0.80
-    assert 0.90 <= p["ns"] <= 1.02
-    assert 0.03 <= p["Ob"] <= 0.07
-    assert -1.20 <= p["w0"] <= -0.80
-    assert  0.00 <= p["mv"] <=  0.40
-    assert -0.50 <= p["wa"] <=  0.50
-
-    # All sigmas are strictly positive
+    # NOTE: asserting each parameter lies inside its prior range would test
+    # nothing. ParameterHead ends in sigmoid(raw) * (p_max - p_min) + p_min, so
+    # those bounds hold algebraically for any weights and any input, including a
+    # randomly initialised model. A previous version of this file made exactly
+    # that assertion and called it validating physical ranges.
+    #
+    # Test something a broken model could actually fail: that the output
+    # depends on the input at all.
     assert (result.sigmas_array > 0).all()
+
+    other = cosmufr.infer(pk_z0 * 3.0, pk_z047 * 3.0, model=model)
+    spread = float(np.abs(other.params_array - result.params_array).max())
+    assert spread > 1e-4, (
+        f"Tripling the input amplitude moved the parameters by only {spread:.2e}. "
+        f"The model is ignoring its input."
+    )
 
     # Guard against energy blow-up only. The released checkpoint's energy sits
     # near -9.3e5 and is flat across all 16 steps; asserting a descent here
