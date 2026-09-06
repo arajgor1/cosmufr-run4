@@ -47,11 +47,20 @@ def read_settling(report) -> List[str]:
     worst, worst_pct = max(drift.items(), key=lambda kv: kv[1])
 
     if move < 1.0 and abs(ulp) <= 4:
-        out.append(
-            f"Read the top panel first. The energy moved by {abs(ulp):.0f} "
-            f"float32 step{'s' if abs(ulp) != 1 else ''} across all sixteen "
-            f"iterations, which is the smallest change a number of that "
-            f"magnitude can represent. It did not descend; it rounded.")
+        if abs(ulp) < 0.5:
+            # Saying "0 steps, the smallest representable change" is wrong:
+            # zero is not the smallest change, it is the absence of one.
+            out.append(
+                "Read the top panel first. Over all sixteen iterations the "
+                "energy did not change at all. Not by a little: the number "
+                "that the refinement exists to minimise came out bit-for-bit "
+                "identical at every step.")
+        else:
+            out.append(
+                f"Read the top panel first. The energy moved by {abs(ulp):.0f} "
+                f"float32 step{'s' if abs(ulp) != 1 else ''} across all sixteen "
+                f"iterations, which is the smallest change a number of that "
+                f"magnitude can represent. It did not descend; it rounded.")
         out.append(
             f"The bottom panel says the same thing in the answer rather than "
             f"the objective. The parameter that moved most was "
