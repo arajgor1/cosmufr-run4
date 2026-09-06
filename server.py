@@ -84,11 +84,16 @@ CSS = """
   --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
 }
 *{box-sizing:border-box}
+/* Do NOT put overflow-x on body: it moves the scrolling element off
+   <html> in Chromium and silently breaks every in-page anchor,
+   including the jump to #result after a run. Wide tables and figures
+   scroll inside their own .tw wrappers instead. */
 html{scroll-behavior:smooth; scroll-padding-top:76px}
+#result{scroll-margin-top:76px}
 body{
   margin:0; background:var(--black); color:var(--fg);
   font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-  font-size:15px; line-height:1.65; font-weight:300; overflow-x:hidden;
+  font-size:15px; line-height:1.65; font-weight:300;
   -webkit-font-smoothing:antialiased;
 }
 .display{font-family:"Space Grotesk",Inter,sans-serif; font-weight:600; letter-spacing:-.02em}
@@ -263,6 +268,22 @@ def _page(body: str, title: str = "CosmUFR Run 4") -> HTMLResponse:
   </div>
 </div></nav>
 {body}
+<script>
+/* Scroll to the result after a POST. The fragment alone is unreliable here:
+   the page paints before the inline figures decode, so the browser lands at
+   the top. Purely additive - without JS the result is still on the page,
+   just further down. */
+(function(){{
+  var e = document.getElementById('result');
+  if (!e) return;
+  /* behavior:'instant' on purpose. The CSS scroll-behavior:smooth above
+     makes this a no-op in some contexts, and landing on the result is
+     more important than animating the way there. */
+  var go = function(){{ e.scrollIntoView({{block:'start', behavior:'instant'}}); }};
+  go();
+  window.addEventListener('load', go);
+}})();
+</script>
 </body></html>""")
 
 
