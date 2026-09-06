@@ -1,17 +1,15 @@
 """
 server.py — the CosmUFR site and live demo, server-rendered.
 
-Why server-rendered
--------------------
-`app.py` is a Gradio version of this demo and works fine locally. Behind a
-proxy its Server-Sent Events stream is aborted, which puts the Gradio client
-into a failed state: after that no button submits anything and the page looks
-alive but is inert. That is the worst possible failure for a demo whose entire
-job is to work on the first click.
+Structure is a demo, not a report. A visitor should learn what problem this
+attacks, see it work on real data, understand what came out, and only then meet
+the caveats and the roadmap. The audit that found this model's defects is real
+and stays on the page, but it sits where evidence of rigour belongs rather than
+in front of the thing being demonstrated.
 
-Every page here is a complete HTML document rendered on the server. No SSE, no
-websockets, no client framework, no external CSS or JS. It works behind any
-proxy, and it works with JavaScript turned off.
+Rendered entirely on the server: no SSE, no client framework, no CDN. The only
+JavaScript is a decorative background and a scroll-into-view helper, both purely
+additive. It works behind any proxy and with JavaScript disabled.
 
 Run locally:  uvicorn server:app --port 8000
 """
@@ -46,9 +44,25 @@ HF_URL = "https://huggingface.co/arajgor1/cosmufr-run4"
 MAX_UPLOAD = 4_000_000
 
 PARAM_TEX = {
-    "Om": "Ω<sub>m</sub>", "s8": "σ<sub>8</sub>", "h": "h", "ns": "n<sub>s</sub>",
-    "Ob": "Ω<sub>b</sub>", "w0": "w<sub>0</sub>", "mv": "Σm<sub>ν</sub>",
-    "wa": "w<sub>a</sub>",
+    "Om": "&Omega;<sub>m</sub>", "s8": "&sigma;<sub>8</sub>", "h": "h",
+    "ns": "n<sub>s</sub>", "Ob": "&Omega;<sub>b</sub>", "w0": "w<sub>0</sub>",
+    "mv": "&Sigma;m<sub>&nu;</sub>", "wa": "w<sub>a</sub>",
+}
+
+# Plain-language description of each simulation suite the examples come from.
+# Without this a visitor sees "camb_nl" in a dropdown and learns nothing.
+SOURCE_BLURB = {
+    "camb_nl": "CAMB, the standard Boltzmann solver, with a non-linear correction",
+    "bacco": "BACCO, an emulator trained on high-resolution N-body simulations",
+    "bcemu": "BCemu, which adds the effect of gas and feedback on small scales",
+    "spk": "SP(k), a model for how baryons suppress small-scale structure",
+    "dark_emulator": "Dark Emulator, built from the Quijote N-body suite",
+    "bacco_neutrino": "BACCO, with massive neutrinos included",
+    "bacco_full8": "BACCO, varying all eight parameters at once",
+    "bcemu_neutrino": "BCemu, with massive neutrinos included",
+    "bacco_multiz": "BACCO multi-redshift, a set with a known data defect",
+    "ns_grid": "a dedicated grid varying the spectral index",
+    "camels_astrid_x": "CAMELS Astrid, a hydrodynamic simulation suite",
 }
 
 MODEL = cosmufr.load_model(ckpt_path=os.environ.get("COSMUFR_CKPT"), device="cpu")
@@ -64,169 +78,316 @@ RIDGE = json.loads((_reports / "ridge_baseline.json").read_text()) \
 
 EXAMPLE_IDS = list(range(0, min(len(BENCH), 5400), 211))[:24]
 
-app = FastAPI(title="CosmUFR Run 4")
+app = FastAPI(title="CosmUFR")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Design. Ported from the Calybre design language: near-black ground, glass
-# panels over it, Space Grotesk for display and Inter for body, single blue
-# accent. Self-contained on purpose, so a CDN outage cannot leave a reviewer
-# looking at unstyled HTML.
+# Design system, ported from calybre.ai: black ground, a plexus canvas behind
+# the hero, technical corner brackets, one accent, Space Grotesk over Inter,
+# numbered sections with a category label and a declarative headline.
+# Self-contained so no CDN can leave a visitor looking at unstyled HTML.
 # ─────────────────────────────────────────────────────────────────────────────
 
 CSS = """
 :root{
-  --black:#000000; --charcoal:#0A0A0A; --panel:rgba(20,20,20,.45);
-  --line:rgba(255,255,255,.10); --line-soft:rgba(255,255,255,.05);
-  --fg:#E2E2E2; --mut:#8b93a3; --dim:#5f6673;
-  --accent:#3b82f6; --accent-dim:rgba(59,130,246,.14);
-  --warn:#E69F00; --bad:#D55E00; --good:#009E73;
+  --bg:#000; --bg2:#070709; --panel:rgba(18,18,21,.62); --panel2:rgba(255,255,255,.024);
+  --line:rgba(255,255,255,.10); --hair:rgba(255,255,255,.055);
+  --fg:#EDEEF0; --mut:#9aa1ad; --dim:#666d79;
+  --accent:#3b82f6; --accent2:#60a5fa; --accent-bg:rgba(59,130,246,.10);
+  --warn:#E6A23C; --bad:#E2643B; --good:#3FBF8F;
   --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --maxw:1260px;
 }
 *{box-sizing:border-box}
-/* Do NOT put overflow-x on body: it moves the scrolling element off
-   <html> in Chromium and silently breaks every in-page anchor,
-   including the jump to #result after a run. Wide tables and figures
-   scroll inside their own .tw wrappers instead. */
-html{scroll-behavior:smooth; scroll-padding-top:76px}
-#result{scroll-margin-top:76px}
+/* Never put overflow-x on body: in Chromium it moves the scrolling element off
+   <html> and silently breaks every in-page anchor, including the jump to the
+   result after a run. Wide content scrolls inside .tw wrappers instead. */
+html{scroll-behavior:smooth; scroll-padding-top:80px; background:var(--bg)}
+#result{scroll-margin-top:88px}
 body{
-  margin:0; background:var(--black); color:var(--fg);
+  margin:0; background:var(--bg); color:var(--fg);
   font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-  font-size:15px; line-height:1.65; font-weight:300;
-  -webkit-font-smoothing:antialiased;
+  font-size:15.5px; line-height:1.7; font-weight:300;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
 }
-.display{font-family:"Space Grotesk",Inter,sans-serif; font-weight:600; letter-spacing:-.02em}
-a{color:var(--accent); text-decoration:none}
-a:hover{text-decoration:underline}
-.wrap{max-width:1080px; margin:0 auto; padding:0 24px}
+.display{font-family:"Space Grotesk",Inter,sans-serif; font-weight:600;
+  letter-spacing:-.028em; line-height:1.04}
+a{color:var(--accent2); text-decoration:none}
+a:hover{color:#fff}
+.wrap{max-width:var(--maxw); margin:0 auto; padding:0 32px}
 
-/* nav */
-nav.top{
-  position:sticky; top:0; z-index:50; background:rgba(0,0,0,.72);
-  backdrop-filter:blur(16px); -webkit-backdrop-filter:blur(16px);
-  border-bottom:1px solid var(--line-soft);
+/* ── nav ─────────────────────────────────────────────────────────────── */
+nav.top{position:sticky; top:0; z-index:60; background:rgba(0,0,0,.68);
+  backdrop-filter:blur(18px) saturate(140%); -webkit-backdrop-filter:blur(18px);
+  border-bottom:1px solid var(--hair)}
+nav.top .wrap{display:flex; align-items:center; gap:24px; height:66px}
+.brand{display:flex; align-items:center; gap:11px; flex-shrink:0}
+.brand svg{width:19px; height:19px; color:#fff}
+.brand b{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:14px;
+  letter-spacing:.22em; text-transform:uppercase; color:#fff}
+.navlinks{display:flex; gap:26px; margin-left:auto; align-items:center; overflow-x:auto}
+.navlinks a{color:var(--mut); font-size:11.5px; letter-spacing:.13em;
+  text-transform:uppercase; white-space:nowrap; font-weight:400; transition:color .18s}
+.navlinks a:hover{color:#fff}
+.navcta{flex-shrink:0; display:inline-flex; align-items:center; gap:7px;
+  padding:8px 17px; border:1px solid rgba(255,255,255,.28); border-radius:999px;
+  color:#fff !important; font-size:11.5px; letter-spacing:.13em;
+  text-transform:uppercase; transition:background .2s,border-color .2s}
+.navcta:hover{background:#fff; color:#000 !important; border-color:#fff}
+
+/* ── hero ────────────────────────────────────────────────────────────── */
+.hero{position:relative; overflow:hidden; border-bottom:1px solid var(--hair);
+  background:radial-gradient(1100px 620px at 74% 34%, rgba(59,130,246,.10), transparent 62%)}
+.hero canvas{position:absolute; inset:0; z-index:0; pointer-events:none}
+.hero .wrap{position:relative; z-index:2; padding-top:96px; padding-bottom:84px;
+  display:grid; grid-template-columns:minmax(0,1.18fr) minmax(0,.82fr);
+  gap:52px; align-items:center; min-height:calc(100vh - 66px)}
+@media (max-width:980px){
+  .hero .wrap{grid-template-columns:1fr; gap:36px; min-height:0; padding-top:72px}
+  .heroviz{order:2}
 }
-nav.top .wrap{display:flex; align-items:center; justify-content:space-between;
-  height:60px; gap:20px}
-nav.top .brand{display:flex; align-items:center; gap:10px; flex-shrink:0}
-nav.top .brand .mark{width:22px;height:22px;flex-shrink:0}
-nav.top .brand span{font-family:"Space Grotesk",sans-serif; font-weight:700;
-  letter-spacing:.18em; text-transform:uppercase; font-size:13px; color:#fff}
-nav.top .links{display:flex; gap:22px; align-items:center; overflow-x:auto}
-nav.top .links a{color:var(--mut); font-size:12px; letter-spacing:.08em;
-  text-transform:uppercase; white-space:nowrap; text-decoration:none;
-  transition:color .2s}
-nav.top .links a:hover{color:#fff}
-
-/* hero */
-.hero{position:relative; padding:76px 0 44px; border-bottom:1px solid var(--line-soft)}
-.hero h1{font-size:clamp(38px,6vw,68px); line-height:1.02; margin:0 0 18px}
-.hero .lede{font-size:18px; color:var(--mut); max-width:640px; margin:0 0 26px;
-  font-weight:300}
-.pill{display:inline-flex; align-items:center; gap:8px; padding:6px 14px;
+.brackets{position:absolute; inset:26px 24px; z-index:1; pointer-events:none}
+.brackets i{position:absolute; width:34px; height:34px; border:1px solid rgba(255,255,255,.20)}
+.brackets i:nth-child(1){top:0;left:0;border-right:0;border-bottom:0}
+.brackets i:nth-child(2){top:0;right:0;border-left:0;border-bottom:0}
+.brackets i:nth-child(3){bottom:0;left:0;border-right:0;border-top:0}
+.brackets i:nth-child(4){bottom:0;right:0;border-left:0;border-top:0}
+.eyebrow{display:inline-flex; align-items:center; gap:9px; padding:6px 14px;
   border:1px solid var(--line); border-radius:999px; background:rgba(255,255,255,.03);
-  font-family:var(--mono); font-size:11px; letter-spacing:.16em;
-  text-transform:uppercase; color:var(--mut); margin-bottom:26px}
-.pill .dot{width:6px;height:6px;border-radius:50%;background:var(--good);
-  animation:pulse 2.4s ease-in-out infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  font-family:var(--mono); font-size:10.5px; letter-spacing:.19em;
+  text-transform:uppercase; color:var(--mut); margin-bottom:30px}
+.eyebrow .dot{width:6px;height:6px;border-radius:50%;background:var(--good);
+  box-shadow:0 0 9px var(--good); animation:pulse 2.6s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.32}}
+.hero h1{font-size:clamp(34px,3.5vw,50px); margin:0 0 22px; max-width:17ch}
+.hero h1 em{font-style:normal; color:var(--dim)}
+.hero .lede{font-size:16.5px; line-height:1.62; color:var(--mut); max-width:54ch; margin:0 0 32px}
+.ctas{display:flex; gap:12px; flex-wrap:wrap}
+.btn{display:inline-flex; align-items:center; gap:9px; padding:13px 24px;
+  border-radius:9px; font-size:14px; font-weight:500; border:1px solid transparent;
+  cursor:pointer; transition:filter .18s,background .18s,border-color .18s;
+  font-family:Inter,sans-serif}
+.btn-p{background:var(--accent); color:#fff !important; border-color:var(--accent)}
+.btn-p:hover{filter:brightness(1.16); color:#fff !important}
+.btn-g{background:rgba(255,255,255,.05); color:var(--fg) !important; border-color:var(--line)}
+.btn-g:hover{background:rgba(255,255,255,.10); color:#fff !important}
 
-.stats{display:flex; gap:36px; flex-wrap:wrap; margin-top:30px}
-.stat .n{font-family:"Space Grotesk",sans-serif; font-size:24px; font-weight:600; color:#fff}
-.stat .l{font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--dim)}
+.metrics{display:grid; grid-template-columns:repeat(auto-fit,minmax(112px,1fr));
+  gap:1px; margin-top:38px; background:var(--hair); border:1px solid var(--hair)}
+.metrics div{background:rgba(0,0,0,.55); padding:15px 16px}
+.metrics .v{font-family:"Space Grotesk",sans-serif; font-size:21px; font-weight:600;
+  color:#fff; letter-spacing:-.02em; line-height:1.15}
+.metrics .k{font-family:var(--mono); font-size:9.5px; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--mut); margin-top:6px; line-height:1.35}
 
-/* panels */
-.panel{background:var(--panel); backdrop-filter:blur(20px);
-  -webkit-backdrop-filter:blur(20px); border:1px solid var(--line);
-  border-radius:12px; padding:22px 24px; margin:18px 0}
+/* hero visual: the real thing the model does, drawn from real benchmark data */
+.heroviz{position:relative}
+.heroviz .frame{border:1px solid var(--line); border-radius:14px;
+  background:rgba(8,8,10,.62); backdrop-filter:blur(10px); padding:18px 20px 16px}
+.heroviz .cap{display:flex; justify-content:space-between; align-items:baseline;
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.15em;
+  text-transform:uppercase; color:var(--dim); margin-bottom:10px}
+.heroviz svg{display:block; width:100%; height:auto}
+.hgrid{display:grid; grid-template-columns:repeat(4,1fr); gap:1px;
+  background:var(--hair); border:1px solid var(--hair); border-radius:9px;
+  overflow:hidden; margin-top:14px}
+.hgrid div{background:rgba(0,0,0,.7); padding:9px 10px}
+.hgrid .p{font-family:var(--mono); font-size:9.5px; color:var(--dim);
+  letter-spacing:.08em}
+.hgrid .q{font-family:"Space Grotesk",sans-serif; font-size:14.5px; color:#fff;
+  font-weight:500; margin-top:2px}
+
+/* ── sections ────────────────────────────────────────────────────────── */
+section{padding:104px 0; border-bottom:1px solid var(--hair); position:relative}
+.shead{display:grid; grid-template-columns:88px 1fr; gap:26px; margin-bottom:44px}
+.shead .num{font-family:var(--mono); font-size:12px; color:var(--accent);
+  letter-spacing:.1em; padding-top:9px}
+.shead .cat{font-family:var(--mono); font-size:10.5px; letter-spacing:.21em;
+  text-transform:uppercase; color:var(--dim); margin:0 0 13px}
+.shead h2{font-size:clamp(27px,3.9vw,44px); margin:0 0 16px; max-width:20ch}
+.shead p{color:var(--mut); max-width:66ch; margin:0; font-size:16.5px}
+.sbody{margin-left:114px}
+@media (max-width:820px){
+  .shead{grid-template-columns:1fr; gap:0} .shead .num{padding:0 0 10px}
+  .sbody{margin-left:0} section{padding:72px 0} .wrap{padding:0 22px}
+}
+
+/* ── panels, cards, chips ────────────────────────────────────────────── */
+.panel{background:var(--panel); backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px); border:1px solid var(--line);
+  border-radius:14px; padding:26px 28px; margin:20px 0}
+.panel.tight{padding:18px 20px}
 .panel.warn{border-left:3px solid var(--warn)}
 .panel.bad{border-left:3px solid var(--bad)}
-.panel.tight{padding:16px 18px}
+.panel.accent{border-left:3px solid var(--accent)}
 
-section{padding:56px 0; border-bottom:1px solid var(--line-soft)}
-section h2{font-size:clamp(24px,3.2vw,34px); margin:0 0 8px}
-section .kicker{font-family:var(--mono); font-size:11px; letter-spacing:.2em;
-  text-transform:uppercase; color:var(--accent); margin:0 0 10px}
-section .sub{color:var(--mut); max-width:720px; margin:0 0 22px}
-
-/* flow diagram */
-.flow{display:flex; align-items:stretch; gap:12px; flex-wrap:wrap; margin:24px 0}
-.flow .step{flex:1 1 200px; background:var(--panel); border:1px solid var(--line);
-  border-radius:12px; padding:18px}
-.flow .step .n{font-family:var(--mono); font-size:10px; letter-spacing:.18em;
+.cards{display:grid; grid-template-columns:repeat(auto-fit,minmax(228px,1fr)); gap:14px}
+.card{background:var(--panel2); border:1px solid var(--line); border-radius:13px;
+  padding:22px; transition:border-color .2s,background .2s}
+.card:hover{border-color:rgba(255,255,255,.20); background:rgba(255,255,255,.04)}
+.card .n{font-family:var(--mono); font-size:10px; letter-spacing:.18em;
   color:var(--accent); text-transform:uppercase}
-.flow .step h4{margin:8px 0 6px; font-family:"Space Grotesk",sans-serif;
-  font-size:15px; font-weight:600; color:#fff}
-.flow .step p{margin:0; font-size:13.5px; color:var(--mut)}
+.card h4{margin:11px 0 8px; font-family:"Space Grotesk",sans-serif; font-size:16.5px;
+  font-weight:600; color:#fff; letter-spacing:-.01em}
+.card p{margin:0; font-size:14px; color:var(--mut); line-height:1.62}
 
-/* tables */
+.chips{display:flex; gap:8px; flex-wrap:wrap; margin-top:20px}
+.chip{font-family:var(--mono); font-size:10.5px; letter-spacing:.09em;
+  color:var(--dim); border:1px solid var(--hair); border-radius:6px;
+  padding:6px 11px; background:rgba(255,255,255,.02)}
+.chip b{color:var(--fg); font-weight:500}
+
+/* ── tables ──────────────────────────────────────────────────────────── */
+.tw{overflow-x:auto; -webkit-overflow-scrolling:touch; border-radius:11px}
 table{border-collapse:collapse; width:100%; font-size:13.5px}
-th,td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--line-soft)}
-th{color:var(--dim); font-weight:500; font-size:10.5px; letter-spacing:.12em;
-  text-transform:uppercase}
+th,td{text-align:left; padding:11px 13px; border-bottom:1px solid var(--hair)}
+th{color:var(--dim); font-weight:500; font-size:10px; letter-spacing:.15em;
+  text-transform:uppercase; white-space:nowrap}
 td.num,th.num{text-align:right; font-variant-numeric:tabular-nums;
   font-family:var(--mono); font-size:12.5px}
+tbody tr:hover{background:rgba(255,255,255,.022)}
 tr:last-child td{border-bottom:none}
-.tw{overflow-x:auto; -webkit-overflow-scrolling:touch}
 
-/* forms */
+/* ── forms ───────────────────────────────────────────────────────────── */
 select,input[type=file],button,textarea{font:inherit; color:var(--fg);
-  background:rgba(255,255,255,.04); border:1px solid var(--line);
-  border-radius:8px; padding:10px 13px}
-select{min-width:min(520px,100%); font-size:13.5px}
-button{background:var(--accent); border-color:var(--accent); color:#fff;
-  font-weight:500; cursor:pointer; transition:filter .15s; font-size:14px}
-button:hover{filter:brightness(1.14)}
-button.ghost{background:rgba(255,255,255,.04); border-color:var(--line); color:var(--fg)}
-.row{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+  background:rgba(255,255,255,.045); border:1px solid var(--line);
+  border-radius:9px; padding:12px 14px; font-size:14px}
+select{min-width:min(560px,100%); cursor:pointer}
+select:focus,input:focus{outline:2px solid var(--accent); outline-offset:1px}
+input[type=file]{cursor:pointer; color:var(--mut)}
+.row{display:flex; gap:11px; flex-wrap:wrap; align-items:center}
+.dl{display:inline-flex; align-items:center; gap:7px; padding:7px 13px;
+  border:1px solid var(--line); border-radius:8px; font-family:var(--mono);
+  font-size:11.5px; color:var(--mut); background:rgba(255,255,255,.028);
+  transition:border-color .18s,color .18s}
+.dl:hover{color:#fff; border-color:var(--accent)}
 
-.dl{display:inline-flex; align-items:center; gap:6px; padding:5px 11px;
-  border:1px solid var(--line); border-radius:7px; font-family:var(--mono);
-  font-size:11.5px; color:var(--mut); text-decoration:none; background:rgba(255,255,255,.03)}
-.dl:hover{color:#fff; border-color:var(--accent); text-decoration:none}
+code{font-family:var(--mono); font-size:12.5px; background:rgba(255,255,255,.07);
+  padding:2px 6px; border-radius:5px; color:#dfe4ec}
+pre{font-family:var(--mono); font-size:12px; background:var(--bg2);
+  border:1px solid var(--line); border-radius:11px; padding:17px;
+  overflow-x:auto; line-height:1.58; color:#c8cfda}
+pre code{background:none; padding:0}
+img.fig{width:100%; height:auto; border-radius:11px; margin:4px 0 0;
+  background:#fff; border:1px solid var(--line); display:block}
 
-code{font-family:var(--mono); font-size:12.5px; background:rgba(255,255,255,.06);
-  padding:1.5px 6px; border-radius:4px}
-pre{font-family:var(--mono); font-size:12px; background:var(--charcoal);
-  border:1px solid var(--line); border-radius:10px; padding:15px;
-  overflow-x:auto; line-height:1.5; color:#cbd2de}
-pre code{background:none; padding:0; font-size:inherit}
+.muted{color:var(--mut); font-size:14.5px}
+.dim{color:var(--dim); font-size:13px}
+.flag{color:var(--warn); font-family:var(--mono); font-size:10.5px}
+.bad-t{color:var(--bad)} .good-t{color:var(--good)}
+.lead-in{color:var(--fg); font-weight:400}
 
-img.fig{width:100%; height:auto; border-radius:10px; margin:6px 0 0;
-  background:#fff; border:1px solid var(--line)}
+/* ── figure blocks ───────────────────────────────────────────────────── */
+.figblock{margin:30px 0}
+.figcap{border:1px solid var(--line); border-top:0; border-radius:0 0 11px 11px;
+  padding:18px 20px; background:var(--panel2)}
+.figblock img.fig{border-radius:11px 11px 0 0}
+.figcap .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:16px}
+.figcap .lbl{font-family:var(--mono); font-size:9.5px; letter-spacing:.17em;
+  text-transform:uppercase; color:var(--accent); display:block; margin-bottom:5px}
+.figcap p{margin:0; font-size:13.5px; color:var(--mut); line-height:1.6}
 
-.muted{color:var(--mut); font-size:13px}
-.dim{color:var(--dim); font-size:12.5px}
-.flag{color:var(--warn); font-family:var(--mono); font-size:11px}
-.bad-t{color:var(--bad)}
-.good-t{color:var(--good)}
+/* ── roadmap ─────────────────────────────────────────────────────────── */
+.road{display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px}
+.road .col{border:1px solid var(--line); border-radius:13px; padding:22px;
+  background:var(--panel2)}
+.road .col.now{border-color:rgba(63,191,143,.34); background:rgba(63,191,143,.045)}
+.road .col.next{border-color:rgba(59,130,246,.34); background:rgba(59,130,246,.045)}
+.road .st{font-family:var(--mono); font-size:10px; letter-spacing:.18em;
+  text-transform:uppercase; margin-bottom:12px}
+.road .col.now .st{color:var(--good)} .road .col.next .st{color:var(--accent)}
+.road .col.later .st{color:var(--dim)}
+.road ul{margin:0; padding-left:17px} .road li{font-size:13.8px; margin:9px 0}
+.road h4{margin:0 0 4px; font-family:"Space Grotesk",sans-serif; font-size:16px;
+  color:#fff; font-weight:600}
 
-.figblock{margin:26px 0}
-.figblock .meta{display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr));
-  gap:14px; margin-top:14px}
-.figblock .meta div{border-left:2px solid var(--line); padding-left:12px}
-.figblock .meta .lbl{font-family:var(--mono); font-size:10px; letter-spacing:.16em;
-  text-transform:uppercase; color:var(--accent); display:block; margin-bottom:3px}
-.figblock .meta p{margin:0; font-size:13px; color:var(--mut)}
-
-ol,ul{padding-left:20px} li{margin:7px 0; color:var(--mut); font-size:14px}
-li strong,li code{color:var(--fg)}
-footer{padding:38px 0 64px; color:var(--dim); font-size:13px}
-hr{border:none; border-top:1px solid var(--line-soft); margin:26px 0}
-@media (max-width:640px){ nav.top .links{gap:14px} .hero{padding-top:48px} }
+ol,ul{padding-left:19px} li{margin:9px 0; color:var(--mut); font-size:14.5px}
+li strong{color:var(--fg); font-weight:500}
+details summary{cursor:pointer; color:var(--mut); font-size:13.5px; user-select:none}
+details[open] summary{margin-bottom:11px}
+footer{padding:56px 0 78px; color:var(--dim); font-size:13.5px}
+footer a{color:var(--mut)}
+hr{border:none; border-top:1px solid var(--hair); margin:28px 0}
 """
 
-LOGO = ('<svg class="mark" viewBox="0 0 24 24" fill="none" '
-        'xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
-        '<circle cx="12" cy="12" r="9.2" stroke="#fff" stroke-width="1.4" opacity=".55"/>'
-        '<circle cx="12" cy="12" r="4.4" stroke="#3b82f6" stroke-width="1.6"/>'
-        '<circle cx="12" cy="12" r="1.5" fill="#fff"/></svg>')
+# Plexus background, ported from the Calybre site's ParticleCanvas. Drifting
+# points joined by faint lines: for a cosmology page it reads as large-scale
+# structure, which is what the model is actually looking at.
+PARTICLES_JS = """
+(function(){
+  var c = document.getElementById('plexus');
+  if (!c || !c.getContext) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  var ctx = c.getContext('2d'), W = 0, H = 0, ps = [], raf, mx = -9999, my = -9999;
+  var LINK = 165;
+  function size(){
+    var p = c.parentElement, dpr = window.devicePixelRatio || 1;
+    W = p.clientWidth; H = p.clientHeight;
+    c.width = W * dpr; c.height = H * dpr;
+    c.style.width = W + 'px'; c.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    var n = W < 760 ? 34 : 74; ps = [];
+    for (var i = 0; i < n; i++) ps.push({
+      x: Math.random()*W, y: Math.random()*H,
+      vx:(Math.random()-0.5)*0.24, vy:(Math.random()-0.5)*0.24,
+      r: Math.random()*1.4 + 0.4
+    });
+  }
+  function frame(){
+    ctx.clearRect(0,0,W,H);
+    for (var i=0;i<ps.length;i++){
+      var a = ps[i];
+      a.x += a.vx; a.y += a.vy;
+      if (a.x<0||a.x>W) a.vx*=-1;
+      if (a.y<0||a.y>H) a.vy*=-1;
+      ctx.beginPath(); ctx.arc(a.x,a.y,a.r,0,6.2832);
+      ctx.fillStyle='rgba(255,255,255,0.50)'; ctx.fill();
+      for (var j=i+1;j<ps.length;j++){
+        var b=ps[j], dx=a.x-b.x, dy=a.y-b.y, d=Math.sqrt(dx*dx+dy*dy);
+        if (d<LINK){
+          ctx.beginPath();
+          ctx.strokeStyle='rgba(255,255,255,'+((1-d/LINK)*0.13)+')';
+          ctx.lineWidth=1; ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y); ctx.stroke();
+        }
+      }
+      var mdx=a.x-mx, mdy=a.y-my, md=Math.sqrt(mdx*mdx+mdy*mdy);
+      if (md<210){
+        ctx.beginPath();
+        ctx.strokeStyle='rgba(96,165,250,'+((1-md/210)*0.20)+')';
+        ctx.lineWidth=1; ctx.moveTo(a.x,a.y); ctx.lineTo(mx,my); ctx.stroke();
+      }
+    }
+    raf = requestAnimationFrame(frame);
+  }
+  size(); frame();
+  window.addEventListener('resize', size);
+  c.parentElement.addEventListener('mousemove', function(e){
+    var r=c.getBoundingClientRect(); mx=e.clientX-r.left; my=e.clientY-r.top;
+  });
+  c.parentElement.addEventListener('mouseleave', function(){ mx=-9999; my=-9999; });
+})();
+"""
 
-NAV_LINKS = [
-    ("#what", "What it does"), ("#demo", "Demo"), ("#audit", "The audit"),
-    ("#results", "Results"), ("#baseline", "Baseline"), ("#limits", "Limitations"),
-]
+SCROLL_JS = """
+/* Land on the result after a POST. The URL fragment alone is unreliable: the
+   page paints before the inline figures decode and the browser settles back at
+   the top, so a visitor clicks Run and sees nothing change. Purely additive. */
+(function(){
+  var e = document.getElementById('result');
+  if (!e) return;
+  var go = function(){ e.scrollIntoView({block:'start', behavior:'instant'}); };
+  go(); window.addEventListener('load', go);
+})();
+"""
+
+MARK = ('<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">'
+        '<rect x="50" y="7.5" width="60" height="60" transform="rotate(45 50 7.5)" '
+        'fill="none" stroke="currentColor" stroke-width="9"/>'
+        '<circle cx="50" cy="50" r="9" fill="currentColor"/></svg>')
+
+NAV_LINKS = [("#idea", "The idea"), ("#input", "The input"), ("#demo", "Live demo"),
+             ("#output", "The output"), ("#results", "Accuracy"),
+             ("#audit", "The audit"), ("#roadmap", "Roadmap")]
 
 
 def _png(fig) -> str:
@@ -238,199 +399,358 @@ def _png(fig) -> str:
 
 def _figblock(key: str, img_src: str) -> str:
     n = FIGURE_NOTES[key]
-    why = (f'<div><span class="lbl">Why</span><p>{html.escape(n["why"])}</p></div>'
-           if n["why"] else "")
-    return f"""<div class="figblock">
-<img class="fig" src="{img_src}" alt="{html.escape(n['title'])}">
-<div class="meta">
-<div><span class="lbl">Input</span><p>{html.escape(n['input'])}</p></div>
-<div><span class="lbl">Output</span><p>{html.escape(n['output'])}</p></div>
-<div><span class="lbl">What it means</span><p>{html.escape(n['means'])}</p></div>
-{why}
-</div></div>"""
+    cells = [("Input", n["input"]), ("Output", n["output"]),
+             ("What it means", n["means"])]
+    if n["why"]:
+        cells.append(("Why it looks like this", n["why"]))
+    inner = "".join(
+        f'<div><span class="lbl">{lbl}</span><p>{html.escape(txt)}</p></div>'
+        for lbl, txt in cells)
+    return (f'<div class="figblock"><img class="fig" src="{img_src}" '
+            f'alt="{html.escape(n["title"])}">'
+            f'<div class="figcap"><div class="grid">{inner}</div></div></div>')
 
 
-def _page(body: str, title: str = "CosmUFR Run 4") -> HTMLResponse:
+def _shead(num: str, cat: str, title: str, sub: str = "") -> str:
+    p = f"<p>{sub}</p>" if sub else ""
+    return (f'<div class="shead"><div class="num">{num}</div><div>'
+            f'<p class="cat">{cat}</p><h2 class="display">{title}</h2>{p}'
+            f'</div></div>')
+
+
+def _page(body: str, title: str = "CosmUFR — cosmology from a power spectrum") -> HTMLResponse:
     links = "".join(f'<a href="{h}">{html.escape(t)}</a>' for h, t in NAV_LINKS)
     return HTMLResponse(f"""<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}</title>
-<meta name="description" content="Neural inference of cosmological parameters from the matter power spectrum, released with a reproducible benchmark and an audit of its own training defects.">
+<meta name="description" content="A neural network that reads the matter power spectrum and returns eight cosmological parameters in a quarter of a second, with the benchmark and the audit published alongside it.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>{CSS}</style></head><body>
 <nav class="top"><div class="wrap">
-  <div class="brand">{LOGO}<span>CosmUFR</span></div>
-  <div class="links">{links}
-    <a href="{REPO_URL}">GitHub&nbsp;&#8599;</a>
-    <a href="{HF_URL}">Weights&nbsp;&#8599;</a>
-  </div>
+  <div class="brand">{MARK}<b>CosmUFR</b></div>
+  <div class="navlinks">{links}</div>
+  <a class="navcta" href="#demo">Run it &rarr;</a>
 </div></nav>
 {body}
-<script>
-/* Scroll to the result after a POST. The fragment alone is unreliable here:
-   the page paints before the inline figures decode, so the browser lands at
-   the top. Purely additive - without JS the result is still on the page,
-   just further down. */
-(function(){{
-  var e = document.getElementById('result');
-  if (!e) return;
-  /* behavior:'instant' on purpose. The CSS scroll-behavior:smooth above
-     makes this a no-op in some contexts, and landing on the result is
-     more important than animating the way there. */
-  var go = function(){{ e.scrollIntoView({{block:'start', behavior:'instant'}}); }};
-  go();
-  window.addEventListener('load', go);
-}})();
-</script>
+<script>{PARTICLES_JS}{SCROLL_JS}</script>
 </body></html>""")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Static content sections
+# Narrative sections
 # ─────────────────────────────────────────────────────────────────────────────
 
-def _hero() -> str:
-    return f"""<header class="hero"><div class="wrap">
-<div class="pill"><span class="dot"></span>Live model &middot; not a mock</div>
-<h1 class="display">Cosmological parameters<br>from the matter power spectrum.</h1>
-<p class="lede">CosmUFR reads P(k) at two redshifts and infers eight cosmological
-parameters. This page runs the real released checkpoint on CPU, and publishes
-the audit that found what is wrong with it.</p>
-<div class="row">
-  <a href="#demo"><button>Run the model</button></a>
-  <a href="#audit"><button class="ghost">Read the audit first</button></a>
-</div>
-<div class="stats">
-  <div class="stat"><div class="n">{N_PARAMS/1e6:.0f}M</div><div class="l">parameters</div></div>
-  <div class="stat"><div class="n">245&thinsp;ms</div><div class="l">model forward, CPU</div></div>
-  <div class="stat"><div class="n">6,000</div><div class="l">benchmark spectra shipped</div></div>
-  <div class="stat"><div class="n">4</div><div class="l">modules that never trained</div></div>
-</div>
-</div></header>
 
-<div class="wrap"><div class="panel warn" style="margin-top:28px">
-<strong>Read this before you read any output.</strong> An audit of these weights
-found that the belief-settling core this architecture is named for never received
-a gradient during training. It sits at its initialization; what learned is the
-read-out heads, reading a fixed random projection. The reported uncertainties are
-a clamp constant and the P(k) "reconstruction" is a single constant. Neither is a
-result. <a href="#audit">The evidence is below</a>, and you can reproduce all of
-it from the released checkpoint.
+def _hero_visual() -> str:
+    """
+    The two input curves and the eight numbers they turn into, drawn from a real
+    benchmark spectrum rather than mocked up. It is the whole product in one
+    picture: a measurement on the left, a cosmology on the right.
+    """
+    # Prefer a suite that varies all eight parameters: a fiducial universe
+    # shows w0 = -1.000 and mv = 0.000 and reads as placeholder text.
+    i = next((j for j in EXAMPLE_IDS if _src_name(j) == "bacco_full8"),
+             EXAMPLE_IDS[1] if len(EXAMPLE_IDS) > 1 else 0)
+    lk = np.log10(K_GRID)
+    a = np.log10(np.clip(BENCH.pk_z0[i], 1e-30, None))
+    b = np.log10(np.clip(BENCH.pk_z047[i], 1e-30, None))
+
+    W, H, PL, PR, PT, PB = 520.0, 250.0, 38.0, 12.0, 14.0, 26.0
+    x0, x1 = lk.min(), lk.max()
+    y0 = float(min(a.min(), b.min())); y1 = float(max(a.max(), b.max()))
+    pad = 0.06 * (y1 - y0); y0 -= pad; y1 += pad
+
+    def px(v): return PL + (v - x0) / (x1 - x0) * (W - PL - PR)
+    def py(v): return PT + (1 - (v - y0) / (y1 - y0)) * (H - PT - PB)
+
+    def path(arr):
+        return "M " + " L ".join(f"{px(lk[j]):.1f},{py(arr[j]):.1f}"
+                                 for j in range(0, len(arr), 2))
+
+    grid = ""
+    for kv in (0.1, 0.3, 1.0, 3.0):
+        gx = px(np.log10(kv))
+        grid += (f'<line x1="{gx:.1f}" y1="{PT}" x2="{gx:.1f}" y2="{H-PB}" '
+                 f'stroke="rgba(255,255,255,.07)"/>'
+                 f'<text x="{gx:.1f}" y="{H-PB+15}" fill="#666d79" font-size="9" '
+                 f'font-family="ui-monospace,monospace" text-anchor="middle">{kv:g}</text>')
+
+    p = BENCH.params[i]
+    cells = "".join(
+        f'<div><div class="p">{PARAM_TEX[l]}</div>'
+        f'<div class="q">{p[j]:+.3f}</div></div>' if l in ("w0", "wa") else
+        f'<div><div class="p">{PARAM_TEX[l]}</div>'
+        f'<div class="q">{p[j]:.3f}</div></div>'
+        for j, l in enumerate(PARAM_LABELS))
+
+    return f"""<div class="heroviz"><div class="frame">
+<div class="cap"><span>Input &middot; log&#8321;&#8320; P(k)</span><span>{html.escape(_src_name(i))}</span></div>
+<svg viewBox="0 0 {W:.0f} {H:.0f}" role="img"
+     aria-label="Matter power spectrum at two redshifts">
+  {grid}
+  <line x1="{PL}" y1="{PT}" x2="{PL}" y2="{H-PB}" stroke="rgba(255,255,255,.14)"/>
+  <line x1="{PL}" y1="{H-PB}" x2="{W-PR}" y2="{H-PB}" stroke="rgba(255,255,255,.14)"/>
+  <path d="{path(a)}" fill="none" stroke="#60a5fa" stroke-width="2"/>
+  <path d="{path(b)}" fill="none" stroke="#3b82f6" stroke-width="1.6"
+        stroke-dasharray="4 3" opacity=".85"/>
+  <text x="{W-PR}" y="{PT+12}" fill="#60a5fa" font-size="9.5" text-anchor="end"
+        font-family="ui-monospace,monospace">z = 0.00</text>
+  <text x="{W-PR}" y="{PT+26}" fill="#3b82f6" font-size="9.5" text-anchor="end"
+        font-family="ui-monospace,monospace">z = 0.47</text>
+  <text x="{(PL+W-PR)/2:.0f}" y="{H-4}" fill="#666d79" font-size="9"
+        font-family="ui-monospace,monospace" text-anchor="middle">k  [h/Mpc]</text>
+</svg>
+<div class="cap" style="margin:16px 0 0"><span>Output &middot; the cosmology that produced it</span><span>245 ms</span></div>
+<div class="hgrid">{cells}</div>
 </div></div>"""
 
 
-def _what() -> str:
-    return """<section id="what"><div class="wrap">
-<p class="kicker">What it does</p>
-<h2 class="display">One spectrum in, eight numbers out</h2>
-<p class="sub">The matter power spectrum describes how clumpy the universe is as
-a function of scale. Its shape and height depend on the cosmological parameters
-that produced it, so recovering those parameters from it is an inverse problem.
-CosmUFR learns that inverse map directly.</p>
+def _hero() -> str:
+    return f"""<header class="hero">
+<canvas id="plexus"></canvas>
+<div class="brackets"><i></i><i></i><i></i><i></i></div>
+<div class="wrap">
+<div>
+<div class="eyebrow"><span class="dot"></span>Run 4 &middot; research preview &middot; live model</div>
+<h1 class="display">From a sky measurement to a cosmology,<br><em>in a quarter of a second.</em></h1>
+<p class="lede">Working out which universe produced a given measurement normally
+takes days of compute. CosmUFR is a neural network that learns the inverse map
+directly and returns an answer in one forward pass. This page runs the real
+model, on real held-out data, while you watch.</p>
+<div class="ctas">
+  <a class="btn btn-p" href="#demo">Run it on real data &rarr;</a>
+  <a class="btn btn-g" href="#idea">What problem is this</a>
+</div>
+<div class="metrics">
+  <div><div class="v">245&thinsp;ms</div><div class="k">to infer, one CPU</div></div>
+  <div><div class="v">8</div><div class="k">parameters out</div></div>
+  <div><div class="v">84.5M</div><div class="k">training spectra</div></div>
+  <div><div class="v">6,000</div><div class="k">checkable test cases</div></div>
+</div>
+</div>
+{_hero_visual()}
+</div></header>"""
 
-<div class="flow">
-<div class="step"><div class="n">Input</div><h4>P(k) at two redshifts</h4>
-<p>200 log-spaced k bins from 0.1 to 4.5 h/Mpc, at z=0 and z=0.47. The second
-redshift is there so the model can see how structure grew between them.</p></div>
-<div class="step"><div class="n">Encode</div><h4>A 1024-d belief</h4>
-<p>The 400 input values are projected into a belief vector meant to hold
-everything the model thinks about this universe.</p></div>
-<div class="step"><div class="n">Settle</div><h4>16 refinement steps</h4>
-<p>The belief descends a learned energy. This is the architecture's central
-idea, and on this checkpoint it does nothing measurable.</p></div>
-<div class="step"><div class="n">Read out</div><h4>Eight parameters</h4>
-<p>Heads read the settled belief and emit the parameters, each squashed into its
-physically allowed range.</p></div>
+
+def _idea() -> str:
+    return f"""<section id="idea"><div class="wrap">
+{_shead("00", "The idea", "Surveys are fast now. Interpreting them is not.",
+        "A telescope survey measures where hundreds of millions of galaxies are. "
+        "Turning that into a statement about the universe means running the "
+        "physics backwards, and that inversion is the slow part.")}
+<div class="sbody">
+
+<div class="panel accent">
+<p class="muted" style="margin:0 0 16px"><span class="lead-in">The conventional
+route.</span> You guess a set of cosmological parameters, simulate the universe
+they would produce, compare it to what was measured, and repeat. Hundreds of
+thousands of times, until the guesses converge. It is reliable and it is slow:
+CPU-days to CPU-weeks for a single analysis.</p>
+<p class="muted" style="margin:0"><span class="lead-in">The alternative this
+tests.</span> Train a network on millions of simulated universes until it learns
+the inverse directly. Then a new measurement is a single forward pass. If that
+works, the cost of an analysis drops by orders of magnitude, and questions you
+would never run because they are too expensive become routine: sweep the whole
+survey, re-run under every systematic, iterate in an afternoon.</p>
 </div>
 
-<p class="sub" style="margin-top:6px">What makes this an inverse problem rather
-than a fit: many different cosmologies produce similar spectra, so some
-parameters are far better constrained by P(k) than others. That ordering shows
-up clearly in the results.</p>
-</div></section>"""
+<div class="cards" style="margin-top:26px">
+<div class="card"><div class="n">One measurement in</div>
+<h4>The power spectrum</h4>
+<p>A single curve summarising how clumpy the universe is at every scale, measured
+at two moments in cosmic history.</p></div>
+<div class="card"><div class="n">One forward pass</div>
+<h4>No sampling, no likelihood</h4>
+<p>No simulator in the loop and no chain to converge. The network was trained
+once; using it costs one pass.</p></div>
+<div class="card"><div class="n">Eight numbers out</div>
+<h4>A candidate cosmology</h4>
+<p>How much matter, how clumpy, how fast the expansion, what the dark energy is
+doing. Plus, honestly, which of those it does not yet get right.</p></div>
+</div>
+
+<p class="muted" style="margin-top:26px">This release is an early, working, and
+openly flawed attempt at that. Everything below is measured rather than claimed,
+the test data ships with the code, and the parts that do not work are named.</p>
+</div></div></section>"""
 
 
-def _limits() -> str:
-    items = [
-        ("The belief pipeline never trained.", "<code>obs_encoder</code>, "
-         "<code>belief_proposal</code> and <code>settling</code> sit at "
-         "initialization: 84 Linear biases are still bit-exactly zero after 40 "
-         "epochs. Root cause is an unconditional <code>detach()</code> in the "
-         "settling loop."),
-        ("Settling does no measurable work.", "0.09 percent mean belief "
-         "movement, energy flat to one float32 unit."),
-        ("The energy landscape is flat.", "The energy heads did train, via their "
-         "own optimizer, and converged to an input-independent constant: E varies "
-         "by about one part in seven million across completely different spectra. "
-         "So repairing the gradient path alone would not make settling work. "
-         "There would still be nothing to descend."),
-        ("Reported uncertainties are a constant.", "σ = 0.1 for six of eight "
-         "parameters on 100 percent of inputs, because the uncertainty head sits "
-         "at its clamp floor. Not error bars."),
-        ("The generative head returns a constant.", "The same value at every k, "
-         "for every input, and for a random belief vector. Its error of 0.687 is "
-         "the variance of log10 P(k) about a constant."),
-        ("Neutrino mass is not recovered.", "R² = 0.011 measured only on data "
-         "where it actually varies."),
-        ("The energy subsystem diverged.", "E sits near −9.3e5. The E_con "
-         "anomaly score is about −4.6e5 and is not a usable out-of-distribution "
-         "signal."),
-        ("Two redshifts only.", "Multi-redshift generalization is unvalidated, "
-         "and the multi-redshift corpus has a documented ordering defect."),
-        ("The headline table is not externally reproducible.", "It was measured "
-         "on 162,795 rows of a private split. The bundled 6,000-row benchmark "
-         "lands within about 0.03 of it and narrows that gap rather than closing "
-         "it."),
-        ("No ablation.", "There is a linear baseline now, but no ablation of the "
-         "architecture's own components."),
-    ]
-    lis = "".join(f"<li><strong>{t}</strong> {d}</li>" for t, d in items)
-    return f"""<section id="limits"><div class="wrap">
-<p class="kicker">Limitations</p>
-<h2 class="display">Everything known to be wrong with this model</h2>
-<p class="sub">Stated in full, because a careful reader will find all of it
-within ten minutes anyway.</p>
-<ol>{lis}</ol>
-</div></section>
+def _input_section() -> str:
+    src_rows = ""
+    seen = set()
+    for i in EXAMPLE_IDS:
+        name = cosmufr.SOURCE_NAMES.get(int(BENCH.source_lid[i]), "")
+        if name in seen or name not in SOURCE_BLURB:
+            continue
+        seen.add(name)
+        src_rows += (f'<tr><td><code>{html.escape(name)}</code></td>'
+                     f'<td class="muted">{html.escape(SOURCE_BLURB[name])}</td></tr>')
 
-<footer><div class="wrap">
-<p>Research prototype from an in-progress PhD project by Aaditya Rajgor.
-MIT licensed.</p>
-<p>Code, benchmark and full report: <a href="{REPO_URL}">{REPO_URL}</a><br>
-Weights and model card: <a href="{HF_URL}">{HF_URL}</a></p>
-<p class="dim">Checkpoint sha256 {SHA256}</p>
-</div></footer>"""
+    return f"""<section id="input"><div class="wrap">
+{_shead("01", "The input", "What the model actually reads.",
+        "Two curves. Everything the model knows about a universe comes from "
+        "these 400 numbers.")}
+<div class="sbody">
+
+<div class="cards">
+<div class="card"><div class="n">What P(k) is</div>
+<h4>Clumpiness, scale by scale</h4>
+<p>Matter is not spread evenly. The power spectrum says how much structure exists
+at each size: large scales on the left, small ones on the right. It falls to the
+right because the universe is smoother at large scales.</p></div>
+<div class="card"><div class="n">Why two of them</div>
+<h4>Now, and 4.7 billion years ago</h4>
+<p>One curve at z=0 and one at z=0.47. Comparing them shows how fast structure
+grew, which is what separates parameters that would otherwise look identical
+from a single snapshot.</p></div>
+<div class="card"><div class="n">The fixed grid</div>
+<h4>200 points, k = 0.1 to 4.5</h4>
+<p>Both curves are sampled at the same 200 scales, in units of h/Mpc. That fixed
+grid is the contract: anything you feed the model has to be on it.</p></div>
+</div>
+
+<div class="chips">
+<span class="chip"><b>400</b> input numbers</span>
+<span class="chip"><b>2</b> redshifts &middot; z=0.00, z=0.47</span>
+<span class="chip"><b>200</b> log-spaced k bins each</span>
+<span class="chip"><b>0.1 &ndash; 4.5</b> h/Mpc</span>
+<span class="chip">units <b>(Mpc/h)&sup3;</b></span>
+</div>
+
+<h3 class="display" style="font-size:21px; margin:44px 0 10px">The examples in the demo</h3>
+<p class="muted" style="max-width:66ch">The dropdown is not a set of toy inputs.
+Each entry is a real simulated universe from a published cosmology code, held out
+of training, with its true parameters recorded. The label shows the suite it came
+from and three of its true values, so you can see before you run it what the
+right answer is.</p>
+<div class="panel tight"><div class="tw"><table>
+<tr><th>label in the dropdown</th><th>what it is</th></tr>{src_rows}
+</table></div></div>
+<p class="dim">Every one of these is downloadable, so you can take a spectrum
+away, feed it back through the upload box, and confirm you get the same answer.</p>
+</div></div></section>"""
+
+
+def _output_section() -> str:
+    rows = ""
+    for lbl in PARAM_LABELS:
+        name, desc = PARAM_MEANING[lbl]
+        rows += (f'<tr><td>{PARAM_TEX[lbl]}</td>'
+                 f'<td style="white-space:nowrap"><strong>{html.escape(name)}</strong></td>'
+                 f'<td class="muted">{html.escape(desc)}</td></tr>')
+    return f"""<section id="output"><div class="wrap">
+{_shead("03", "The output", "Reading the eight numbers.",
+        "Every run returns the same eight parameters. Here is what each one is, "
+        "and how to tell a good answer from a bad one.")}
+<div class="sbody">
+<div class="panel tight"><div class="tw"><table>
+<tr><th>symbol</th><th>name</th><th>what it controls</th></tr>{rows}
+</table></div></div>
+
+<div class="cards" style="margin-top:24px">
+<div class="card"><div class="n">How to read it</div><h4>Predicted vs true</h4>
+<p>Because the examples are held-out simulations, the demo shows the true value
+next to the prediction and the difference between them. A small residual means
+the model recovered that parameter for that universe.</p></div>
+<div class="card"><div class="n">Read with care</div><h4>The &sigma; column</h4>
+<p>The model reports an uncertainty, and it is not trustworthy. It emits the same
+constant on every input, so it is flagged in the results table and should be
+ignored. Section 05 explains why.</p></div>
+<div class="card"><div class="n">Expect a spread</div><h4>Not all eight are equal</h4>
+<p>The spectrum constrains matter density and clumpiness strongly, expansion rate
+and dark energy weakly, and neutrino mass essentially not at all. That ordering
+is physics, and it shows in the accuracy table.</p></div>
+</div>
+</div></div></section>"""
+
+
+def _roadmap() -> str:
+    return f"""<section id="roadmap"><div class="wrap">
+{_shead("06", "Roadmap", "Where this is, and where it goes.",
+        "This is an in-progress PhD project, not a finished tool. The honest "
+        "state of it, and the order I would attack the rest in.")}
+<div class="sbody">
+<div class="road">
+
+<div class="col now"><div class="st">&#9679; Where it is today</div>
+<h4>A working, audited baseline</h4>
+<ul>
+<li>End-to-end inference in 245&thinsp;ms on a CPU, bit-deterministic.</li>
+<li>Trained on 84.5M spectra across 14 simulation suites.</li>
+<li>Recovers matter density and clumpiness to R&sup2; 0.98&ndash;0.99 on
+sound data.</li>
+<li>A 6,000-case benchmark ships with the code, so the numbers are checkable.</li>
+<li>A linear baseline is published alongside, including where it wins.</li>
+<li>Audited: the belief-settling core never trained, and that is documented
+rather than buried.</li>
+</ul></div>
+
+<div class="col next"><div class="st">&#9654; Next, and costed</div>
+<h4>Make the architecture actually run</h4>
+<ul>
+<li>Repair the severed gradient path, guarded by the unit test that would have
+caught it originally. Free, and verifiable before any training spend.</li>
+<li>Fix the flat energy landscape. Harder, and the real blocker: the heads
+trained themselves into a constant, so there is nothing to descend.</li>
+<li>Give the uncertainty head a floor it can leave, so the error bars mean
+something.</li>
+<li>Rebalance the training corpus, which pins dark energy at its fiducial value
+in 86 percent of samples.</li>
+<li>One pre-registered training run with a pass/fail threshold set in advance.
+Roughly $15.</li>
+</ul></div>
+
+<div class="col later"><div class="st">&#9675; Open questions</div>
+<h4>What I want advice on</h4>
+<ul>
+<li>Is iterative belief refinement worth pursuing at all once the gradient path
+works, or does an amortized posterior estimator get there in one pass?</li>
+<li>How much of the weakness in expansion rate and dark energy is a real
+information limit of P(k), and how much is just training coverage? I do not
+know how to separate them cleanly.</li>
+<li>Would higher k, more redshifts, or explicit acoustic-scale features make the
+expansion rate identifiable?</li>
+<li>What does a defensible experimental design for any of that look like?</li>
+</ul></div>
+
+</div>
+<p class="muted" style="margin-top:26px">The longer aim is the one in the hero:
+shortening the loop between an observation and a parameter constraint, so that
+analyses currently priced out by compute become routine. This model is where
+that work started, defects included.</p>
+</div></div></section>"""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Downloads. Every built-in example is downloadable in both formats, so a
-# visitor can take example #211, upload it straight back, and confirm the two
-# paths give the same answer. Nothing here is special-cased for the built-ins:
-# the upload path runs identical code.
+# Downloads. Every example is downloadable in both formats so a visitor can take
+# one, upload it straight back, and confirm the answer matches. Nothing here is
+# special-cased for the built-ins: the upload path runs identical code.
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _src_name(i: int) -> str:
+    return cosmufr.SOURCE_NAMES.get(int(BENCH.source_lid[i]), f"lid_{BENCH.source_lid[i]}")
+
 
 def _example_label(i: int) -> str:
-    src = cosmufr.SOURCE_NAMES.get(int(BENCH.source_lid[i]), f"lid_{BENCH.source_lid[i]}")
     p = BENCH.params[i]
-    return f"#{i} · {src} · Om={p[0]:.3f} s8={p[1]:.3f} h={p[2]:.3f}"
+    return (f"#{i} · {_src_name(i)} · true Om={p[0]:.3f} s8={p[1]:.3f} h={p[2]:.3f}")
 
 
 def _csv_for(i: int) -> str:
-    src = cosmufr.SOURCE_NAMES.get(int(BENCH.source_lid[i]), f"lid_{BENCH.source_lid[i]}")
     p = BENCH.params[i]
     truth = "  ".join(f"{l}={v:.6g}" for l, v in zip(PARAM_LABELS, p))
     head = [
         "# CosmUFR input file",
-        f"# Benchmark example #{i}, source: {src}",
+        f"# Benchmark example #{i}, source: {_src_name(i)}",
         f"# True parameters: {truth}",
         "#",
         "# Two rows, 200 comma-separated values each.",
         "#   row 1: P(k) at z = 0.00",
         "#   row 2: P(k) at z = 0.47",
         "# k grid: 200 log-spaced bins from 0.1 to 4.5 h/Mpc (see kgrid.csv).",
-        "# Units: P(k) in (Mpc/h)^3. Raw P(k) or log10 P(k) are both accepted.",
+        "# Units: P(k) in (Mpc/h)^3. Raw P(k) or log10 P(k) both accepted.",
         "# Lines beginning with # are ignored.",
     ]
     rows = [",".join(f"{v:.8e}" for v in BENCH.pk_z0[i]),
@@ -456,8 +776,6 @@ def dl_example_npy(idx: int):
 
 @app.get("/download/template.csv")
 def dl_template():
-    # A working file, not a blank one. It runs as-is, so the format is
-    # unambiguous, and the values can be replaced in place.
     body = _csv_for(EXAMPLE_IDS[1] if len(EXAMPLE_IDS) > 1 else 0)
     body = body.replace(
         "# CosmUFR input file",
@@ -488,46 +806,48 @@ def _form(selected=None) -> str:
     opts = "".join(
         f'<option value="{i}"{" selected" if i == sel else ""}>'
         f'{html.escape(_example_label(i))}</option>' for i in EXAMPLE_IDS)
+    blurb = SOURCE_BLURB.get(_src_name(sel), "a held-out simulated universe")
     return f"""
 <div class="panel">
+<p class="muted" style="margin:0 0 14px"><span class="lead-in">Pick a universe.</span>
+Each option is a simulated cosmology held out of training, labelled with the code
+that produced it and three of its true parameter values. The currently selected
+one comes from {html.escape(blurb)}.</p>
 <form method="post" action="/infer#result">
   <div class="row">
     <select name="example_id" aria-label="Example spectrum">{opts}</select>
-    <button type="submit">Run inference</button>
+    <button class="btn btn-p" type="submit">Run inference &rarr;</button>
   </div>
-  <p class="muted" style="margin:14px 0 10px">Held-out spectra from the bundled
-  benchmark, so the true parameters are known and shown next to the prediction.</p>
 </form>
-  <div class="row">
-    <a class="dl" href="/download/example/{sel}.csv">&#8595; this example .csv</a>
-    <a class="dl" href="/download/example/{sel}.npy">&#8595; this example .npy</a>
-  </div>
-  <p class="dim" style="margin:12px 0 0"><strong style="color:var(--fg)">Check us.</strong>
-  Download the example above, upload it below as your own file, and compare. The
-  upload path runs identical code with no special-casing, so the two results
-  should match to the last digit. If they do not, that is a bug worth reporting.</p>
+<div class="row" style="margin-top:16px">
+  <a class="dl" href="/download/example/{sel}.csv">&#8595; this spectrum .csv</a>
+  <a class="dl" href="/download/example/{sel}.npy">&#8595; this spectrum .npy</a>
+</div>
+<p class="dim" style="margin:14px 0 0"><span class="lead-in">Check us.</span>
+Download the spectrum above, upload it below as your own file, and compare. The
+upload path runs identical code with no special-casing, so the two answers should
+match to the last digit. If they do not, that is a bug worth reporting.</p>
 </div>
 
 <div class="panel">
+<p class="muted" style="margin:0 0 14px"><span class="lead-in">Or bring your own.</span>
+Two rows of 200 numbers: row 1 is P(k) at z=0, row 2 at z=0.47, both on the fixed
+k grid from 0.1 to 4.5 h/Mpc, with P(k) in (Mpc/h)&sup3;. Raw P(k) or log10 P(k)
+are both accepted and detected automatically. A <code>.npy</code> must be shape
+(2,&nbsp;200); a <code>.csv</code> is comma-separated with <code>#</code> comment
+lines ignored.</p>
 <form method="post" action="/infer#result" enctype="multipart/form-data">
   <div class="row">
     <input type="file" name="upload" accept=".npy,.csv" aria-label="Your spectrum">
-    <button type="submit">Run on your own spectrum</button>
+    <button class="btn btn-g" type="submit">Run on your file &rarr;</button>
   </div>
 </form>
-<hr>
-<p class="muted" style="margin:0 0 10px"><strong style="color:var(--fg)">What the
-file must contain.</strong> Two rows of 200 numbers. Row 1 is P(k) at z=0, row 2
-is P(k) at z=0.47, both sampled on 200 log-spaced k bins from 0.1 to 4.5 h/Mpc,
-with P(k) in (Mpc/h)<sup>3</sup>. Raw P(k) or log10 P(k) are both accepted and
-detected automatically. A <code>.npy</code> must be shape (2, 200); a
-<code>.csv</code> is comma-separated, and <code>#</code> comment lines are ignored.</p>
-<div class="row">
+<div class="row" style="margin-top:16px">
   <a class="dl" href="/download/template.csv">&#8595; template.csv (runs as-is)</a>
   <a class="dl" href="/download/kgrid.csv">&#8595; the k grid</a>
 </div>
-<p class="dim" style="margin:12px 0 0">If your spectrum is on a different k grid,
-interpolate in log-log first:
+<p class="dim" style="margin:14px 0 0">On a different k grid? Interpolate in
+log-log first:
 <code>np.exp(np.interp(np.log(k_grid), np.log(your_k), np.log(your_pk)))</code></p>
 </div>"""
 
@@ -538,31 +858,26 @@ def _timing_panel(t) -> str:
         f'<tr><td>{html.escape(k)}</td><td class="num">{v*1000:.0f} ms</td>'
         f'<td class="num">{100*v/total:.0f}%</td></tr>' for k, v in t.items())
     return f"""<div class="panel tight">
-<p class="muted" style="margin:0 0 10px"><strong style="color:var(--fg)">Where the
-time went.</strong> The model itself is the small part. Most of the wait is
-matplotlib drawing the figures below.</p>
+<p class="muted" style="margin:0 0 12px"><span class="lead-in">Where the time went.</span>
+The inference really is that fast. Most of what you waited for was matplotlib
+drawing the pictures below, not the model.</p>
 <div class="tw"><table>
-<tr><th>stage</th><th class="num">time</th><th class="num">share</th></tr>
-{rows}
-<tr><td><strong>total</strong></td><td class="num"><strong>{total*1000:.0f} ms</strong></td><td class="num">100%</td></tr>
-</table></div></div>"""
+<tr><th>stage</th><th class="num">time</th><th class="num">share</th></tr>{rows}
+<tr><td><strong>total</strong></td><td class="num"><strong>{total*1000:.0f} ms</strong></td>
+<td class="num">100%</td></tr></table></div></div>"""
 
 
 def _run(pk0, pk047, truth, source_label: str, selected=None) -> str:
     t = {}
-
     s = time.perf_counter()
     result = cosmufr.infer(pk0, pk047, model=MODEL)
     t["model forward: encode, 16 settling steps, read-out heads"] = time.perf_counter() - s
-
     s = time.perf_counter()
     report = cosmufr.settling_report(MODEL, pk0, pk047)
     t["settling trace: re-run the 16 steps, recording each"] = time.perf_counter() - s
-
     s = time.perf_counter()
     fig_settle = _png(F.fig_settling_trajectory(report))
     t["draw the settling figure"] = time.perf_counter() - s
-
     s = time.perf_counter()
     fig_pk = _png(F.fig_pk_reconstruction(K_GRID, pk0, pk047,
                                           result.pk_recon, result.log_k))
@@ -571,22 +886,21 @@ def _run(pk0, pk047, truth, source_label: str, selected=None) -> str:
     head = ("<tr><th>parameter</th><th></th><th class='num'>predicted</th>"
             "<th class='num'>reported &sigma;</th>")
     if truth is not None:
-        head += "<th class='num'>true</th><th class='num'>residual</th>"
+        head += "<th class='num'>true</th><th class='num'>off by</th>"
     head += "</tr>"
 
     rows = ""
     for i, lbl in enumerate(PARAM_LABELS):
         v, sg = float(result.params_array[i]), float(result.sigmas_array[i])
         name, _ = PARAM_MEANING[lbl]
-        sg_txt = (f"{sg:.4f} <span class='flag'>floor</span>"
+        sg_txt = (f"{sg:.4f} <span class='flag'>ignore</span>"
                   if abs(sg - 0.1) < 1e-6 else f"{sg:.4f}")
         rows += (f"<tr><td>{PARAM_TEX[lbl]}</td>"
-                 f"<td class='dim'>{html.escape(name)}</td>"
+                 f"<td class='dim' style='white-space:nowrap'>{html.escape(name)}</td>"
                  f"<td class='num'>{v:.5f}</td><td class='num'>{sg_txt}</td>")
         if truth is not None:
-            d = v - float(truth[i])
             rows += (f"<td class='num'>{float(truth[i]):.5f}</td>"
-                     f"<td class='num'>{d:+.5f}</td>")
+                     f"<td class='num'>{v - float(truth[i]):+.5f}</td>")
         rows += "</tr>"
 
     payload = {
@@ -604,188 +918,119 @@ def _run(pk0, pk047, truth, source_label: str, selected=None) -> str:
     }
     dl = ""
     if selected is not None:
-        dl = (f'<div class="row" style="margin-top:12px">'
-              f'<a class="dl" href="/download/example/{selected}.csv">&#8595; this input as .csv</a>'
-              f'<a class="dl" href="/download/example/{selected}.npy">&#8595; this input as .npy</a>'
-              f'</div>')
+        dl = (f'<div class="row" style="margin-top:14px">'
+              f'<a class="dl" href="/download/example/{selected}.csv">&#8595; this exact input as .csv</a>'
+              f'<a class="dl" href="/download/example/{selected}.npy">&#8595; as .npy</a></div>')
+    truth_note = ("" if truth is None else
+                  "<p class='dim' style='margin:12px 0 0'>The true values come "
+                  "from the simulation that produced this spectrum. The model "
+                  "never saw this example during training.</p>")
 
     return f"""<div id="result"></div>
-<h3 class="display" style="margin:34px 0 4px">Result</h3>
+<h3 class="display" style="font-size:24px; margin:38px 0 6px">Result</h3>
 <p class="muted" style="margin:0 0 4px">Input: {html.escape(source_label)}</p>
-<p class="dim" style="margin:0 0 14px">Belief moved
-{report.belief_movement*100:.3f}% of its norm during settling; energy changed by
-{report.energy_drop:.2e}, which is {report.energy_drop_in_ulps:.1f} float32
-resolution steps.</p>
+<p class="dim" style="margin:0 0 16px">Belief moved {report.belief_movement*100:.3f}%
+of its norm during settling; energy changed by {report.energy_drop:.2e}, which is
+{report.energy_drop_in_ulps:.1f} float32 resolution steps.</p>
 <div class="panel"><div class="tw"><table>{head}{rows}</table></div>
-<p class="dim" style="margin:12px 0 0">Every &sigma; marked
-<span class="flag">floor</span> is the uncertainty head's clamp constant, not a
-prediction. Do not read them as error bars.</p>{dl}</div>
+<p class="dim" style="margin:14px 0 0">Every &sigma; marked
+<span class="flag">ignore</span> is the uncertainty head's clamp constant rather
+than a prediction. It is the same number on every input.</p>{truth_note}{dl}</div>
 {_timing_panel(t)}
 {_figblock("settling", fig_settle)}
 {_figblock("pk", fig_pk)}
-<details><summary class="muted" style="cursor:pointer">Result JSON</summary>
+<details><summary>Full result as JSON</summary>
 <pre><code>{html.escape(json.dumps(payload, indent=2))}</code></pre></details>"""
 
 
 def _demo(inner: str = "", selected=None) -> str:
     return f"""<section id="demo"><div class="wrap">
-<p class="kicker">Live demo</p>
-<h2 class="display">Run the model</h2>
-<p class="sub">This runs the released checkpoint on CPU, in this container, on
-whatever you give it. Nothing is cached or precomputed.</p>
-{_form(selected)}
-{inner}
+{_shead("02", "Live demo", "Run it yourself, right now.",
+        "The released checkpoint, loaded in this container, running on whatever "
+        "you give it. Nothing is cached and nothing is precomputed.")}
+<div class="sbody">{_form(selected)}{inner}</div>
 </div></section>"""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Audit, results, baseline
+# Accuracy, baseline, audit, limitations
 # ─────────────────────────────────────────────────────────────────────────────
-
-def _audit() -> str:
-    img = _png(F.fig_weight_audit(AUDIT))
-    rows = ""
-    for name, m in AUDIT.modules.items():
-        bad = m["verdict"] == "UNTRAINED"
-        rows += (
-            f'<tr><td><code>{html.escape(name)}</code></td>'
-            f'<td class="dim">{"on path" if m["on_default_path"] else "unused"}</td>'
-            f'<td class="num">{m["n_zero_bias"]}/{m["n_linear"]}</td>'
-            f'<td class="num">{m["max_abs_bias"]:.3e}</td>'
-            f'<td class="{"bad-t" if bad else "good-t"}">'
-            f'{"never trained" if bad else "trained"}</td></tr>')
-
-    return f"""<section id="audit"><div class="wrap">
-<p class="kicker">The audit</p>
-<h2 class="display">The belief-settling core never trained</h2>
-<p class="sub">This is the most important thing on the page, and you can check
-every part of it yourself from the released checkpoint in about a minute.</p>
-
-<div class="panel"><p class="muted" style="margin:0 0 12px">PyTorch initialises a
-<code>Linear</code> bias from a random draw, and any optimizer step moves it off
-that value. A module whose biases are all still bit-exactly <code>0.0</code>
-after forty epochs of training never received a gradient at all.</p>
-<div class="tw"><table>
-<tr><th>module</th><th></th><th class="num">biases = 0</th>
-<th class="num">max |bias|</th><th>verdict</th></tr>{rows}</table></div>
-<p class="dim" style="margin:12px 0 0">The <code>_single</code> and
-<code>_seq</code> variants belong to an unused single-redshift path. They did
-train, which is a real clue about what happened and one I have not fully
-explained.</p></div>
-
-{_figblock("weight_audit", img)}
-
-<h3 class="display" style="margin:30px 0 8px; font-size:20px">The root cause, in released source</h3>
-<p class="muted">You do not need the weights to see this.
-<code>SettlingCore.forward</code> detaches the belief on entry to every step, so
-nothing downstream of it can reach the encoder:</p>
-<pre><code>for step in range(k):
-    b = b.detach()                      # &lt;- severs everything upstream
-    with torch.enable_grad():
-        b_g = b.requires_grad_(True)
-        E = energy_fn(b_g, z.detach(), b_prev.detach())
-        grad = torch.autograd.grad(E.sum(), b_g)[0]
-    b = b - eta * P * grad.detach()</code></pre>
-<p class="muted">One synthetic training step on a freshly initialised model
-confirms it, with no checkpoint involved:</p>
-<pre><code>modules that received any gradient: ['param_head']</code></pre>
-
-<h3 class="display" style="margin:30px 0 8px; font-size:20px">And a second cause, which matters more</h3>
-<div class="panel bad"><p class="muted" style="margin:0">The energy heads
-<em>did</em> train, through their own optimizer, and converged to an
-input-independent constant. Measured across eight completely different spectra,
-the energy varies by about one part in seven million, and its gradient with
-respect to the belief has norm 0.11 against a belief norm of 16.5. With the
-learned step size capped at 0.05, sixteen steps could move the belief by at most
-half a percent no matter what. <strong style="color:var(--fg)">So repairing the
-gradient path alone would not make settling work.</strong> There would still be
-no landscape to descend. That is a harder and more interesting problem than the
-one I originally reported, and I do not yet have a fix for it.</p></div>
-</div></section>"""
-
 
 def _results() -> str:
     if not REPORT:
         return ""
     full, vary = REPORT["full_val_metrics"], REPORT["full_val_metrics_varying_only"]
     bench = REPORT["benchmark"]["metrics"]
-    OLD = {"Om": 0.907, "s8": 0.911, "h": 0.604, "ns": 0.353,
-           "Ob": 0.406, "w0": 0.742, "mv": 0.410, "wa": 0.187}
 
     def f(x):
-        return "--" if x is None else f"{x:.3f}"
+        return "&ndash;" if x is None else f"{x:.3f}"
 
     rows = ""
     for lbl in PARAM_LABELS:
-        name, desc = PARAM_MEANING[lbl]
-        hl = ' class="num flag"' if lbl == "mv" else ' class="num"'
+        name, _ = PARAM_MEANING[lbl]
+        v = vary[lbl]["r2"]
+        verdict = ("<span class='good-t'>recovered</span>" if v and v > 0.6 else
+                   "<span class='flag'>partial</span>" if v and v > 0.25 else
+                   "<span class='bad-t'>not recovered</span>")
         rows += (f'<tr><td>{PARAM_TEX[lbl]}</td>'
-                 f'<td class="dim">{html.escape(name)}</td>'
-                 f'<td class="num dim">{OLD[lbl]:.3f}</td>'
+                 f'<td class="dim" style="white-space:nowrap">{html.escape(name)}</td>'
                  f'<td class="num">{f(full[lbl]["r2"])}</td>'
-                 f'<td{hl}>{f(vary[lbl]["r2"])}</td>'
+                 f'<td class="num">{f(v)}</td>'
                  f'<td class="num">{f(bench[lbl]["r2"])}</td>'
-                 f'<td class="num">{full[lbl]["rmse"]:.4f}</td></tr>')
+                 f'<td>{verdict}</td></tr>')
 
     src = ""
     for name, blk in sorted(REPORT["per_source_metrics"].items(),
                             key=lambda kv: -kv[1]["n"]):
-        cells = "".join(
-            f'<td class="num">{f(blk["metrics"][l]["r2"])}</td>' for l in PARAM_LABELS)
-        flag = ' <span class="flag">data defect</span>' if name == "bacco_multiz" else ""
+        cells = "".join(f'<td class="num">{f(blk["metrics"][l]["r2"])}</td>'
+                        for l in PARAM_LABELS)
+        flag = (' <span class="flag">known data defect</span>'
+                if name == "bacco_multiz" else "")
         src += (f'<tr><td><code>{html.escape(name)}</code>{flag}</td>'
                 f'<td class="num">{blk["n"]:,}</td>{cells}</tr>')
     hdr = "".join(f'<th class="num">{PARAM_TEX[l]}</th>' for l in PARAM_LABELS)
 
     return f"""<section id="results"><div class="wrap">
-<p class="kicker">Results</p>
-<h2 class="display">Measured on {REPORT['val_split']['n']:,} validation spectra</h2>
-<p class="sub">Computed with the released package on a deterministic split with
-no randomness anywhere, across {REPORT['val_split']['n_sources']} simulation
-sources.</p>
-
+{_shead("04", "Accuracy", "How well it actually works.",
+        f"Measured on {REPORT['val_split']['n']:,} held-out spectra across "
+        f"{REPORT['val_split']['n_sources']} simulation suites, with the "
+        f"released code on a split that has no randomness in it.")}
+<div class="sbody">
 <div class="panel"><div class="tw"><table>
-<tr><th>parameter</th><th></th><th class="num">published 2026-05</th>
-<th class="num">full validation</th><th class="num">where it varies</th>
-<th class="num">bundled benchmark</th><th class="num">RMSE</th></tr>{rows}
-</table></div></div>
+<tr><th>parameter</th><th></th><th class="num">all test data</th>
+<th class="num">where it varies</th><th class="num">bundled benchmark</th>
+<th>verdict</th></tr>{rows}</table></div></div>
 
-<p class="muted"><strong style="color:var(--fg)">Read the third column, not the
-second.</strong> R-squared is a ratio against the variance of the truth, so on
-data where a parameter is held at a fixed value it measures nothing. The
-"where it varies" column restricts each parameter to the sources that actually
-vary it. For the neutrino mass that is the whole story: the apparent 0.41 is an
-artifact of it being pinned at zero across most of the corpus, where predicting
-near-zero scores well without recovering anything.</p>
+<p class="muted"><span class="lead-in">Read the second number, not the first.</span>
+R&sup2; measures how much of the spread in the truth the model explains. On data
+where a parameter is held at a fixed value there is no spread, so the score is
+meaningless. The "where it varies" column restricts each parameter to the data
+that actually varies it. For neutrino mass that is the whole story: it looks
+competent at 0.41 and is 0.011 once measured honestly.</p>
 
-<p class="muted"><strong style="color:var(--fg)">The first column is
-superseded.</strong> It came from the training-time evaluator on a validation
-set that was later corrected, with a checkpoint selected as best from inside
-±0.03 to 0.10 of evaluation noise. It should not be cited.</p>
+<p class="muted"><span class="lead-in">What reproduces.</span> The bundled
+6,000-case benchmark ships in the repository and regenerates its own column to
+about 1e-6 on any machine. The full-test column came from a private split and
+cannot be checked from outside; the benchmark lands within about 0.03 of it and
+narrows that gap rather than closing it.</p>
 
-<p class="muted"><strong style="color:var(--fg)">What actually reproduces.</strong>
-The bundled 6,000-row benchmark regenerates its own column to about 1e-6 on any
-machine. It does <em>not</em> regenerate the full-validation column: that came
-from 162,795 rows of a private split, and the subsample lands within about 0.03
-of it through sampling noise. That gap is narrowed here, not closed.</p>
+<h3 class="display" style="font-size:21px; margin:40px 0 10px">Why the headline is lower than the model deserves</h3>
+<div class="panel tight"><div class="tw"><table>
+<tr><th>simulation suite</th><th class="num">n</th>{hdr}</tr>{src}</table></div>
+<p class="dim" style="margin:12px 0 0"><code>&ndash;</code> means the parameter is
+held fixed in that suite, so R&sup2; is undefined rather than bad.</p></div>
+<p class="muted">One suite, <code>bacco_multiz</code>, is 15 percent of the test
+set and scores zero on everything, because its two redshift channels are
+identical copies of each other and carry no growth information. That is a defect
+in how the data was generated. On suites with sound data, matter density comes
+back at 0.98 to 0.99.</p>
 
-<h3 class="display" style="margin:32px 0 8px; font-size:20px">Why the aggregate is lower than it looks</h3>
-<div class="panel"><div class="tw"><table>
-<tr><th>source</th><th class="num">n</th>{hdr}</tr>{src}</table></div>
-<p class="dim" style="margin:12px 0 0"><code>--</code> means the parameter is
-held at a fixed value in that source, so R-squared is undefined rather than
-bad.</p></div>
-<p class="muted"><code>bacco_multiz</code> is 15 percent of the validation set
-and scores zero on everything, because its z=0.47 spectra are self-paired copies
-of its z=0 spectra and carry no growth information. That is a data-generation
-defect. On sources with sound data the matter density reaches 0.98 to 0.99.</p>
-
-<h3 class="display" style="margin:32px 0 8px; font-size:20px">Reproduce this</h3>
+<h3 class="display" style="font-size:21px; margin:40px 0 10px">Check it yourself</h3>
 <pre><code>git clone {REPO_URL}
 cd cosmufr-run4
 pip install -e ".[demo]"
 python -m cosmufr.reproduce</code></pre>
-</div></section>"""
+</div></div></section>"""
 
 
 def _baseline() -> str:
@@ -801,36 +1046,147 @@ def _baseline() -> str:
         cb = f"<strong>{c:.3f}</strong>" if p["winner"] == "cosmufr" else f"{c:.3f}"
         name, _ = PARAM_MEANING[lbl]
         rows += (f'<tr><td>{PARAM_TEX[lbl]}</td>'
-                 f'<td class="dim">{html.escape(name)}</td>'
+                 f'<td class="dim" style="white-space:nowrap">{html.escape(name)}</td>'
                  f'<td class="num">{rb}</td><td class="num">{cb}</td>'
                  f'<td class="dim">{p["winner"]}</td></tr>')
-    wins = RIDGE.get("cosmufr_wins", 0)
-    n = RIDGE.get("n_compared", 0)
-
+    wins, n = RIDGE.get("cosmufr_wins", 0), RIDGE.get("n_compared", 0)
     return f"""<section id="baseline"><div class="wrap">
-<p class="kicker">Baseline</p>
-<h2 class="display">What does 136 million parameters buy?</h2>
-<p class="sub">Every review of a learned-inference model opens with this
-question, and this release originally shipped without an answer. Ridge
-regression on the same 400 input features, fitted on half the bundled benchmark
-and scored on the other half. CosmUFR is scored on the same held-out half, so
-the comparison is like-for-like.</p>
-
+{_shead("05", "Baseline", "Is the big model earning its keep?",
+        "The first question anyone should ask about a 136-million-parameter "
+        "network is whether a simple method does just as well. So here is the "
+        "simple method.")}
+<div class="sbody">
+<p class="muted" style="max-width:66ch">Ridge regression on exactly the same 400
+input numbers, fitted on half the benchmark and scored on the other half.
+CosmUFR is scored on that same held-out half, so it is a fair fight.</p>
 <div class="panel"><div class="tw"><table>
 <tr><th>parameter</th><th></th><th class="num">ridge, 400 features</th>
 <th class="num">CosmUFR, 136M</th><th>winner</th></tr>{rows}</table></div></div>
-
-<p class="muted">CosmUFR is ahead on {wins} of {n}. A linear fit is competitive
-on the matter density, which is a real check on how much the network is doing
-for the parameters the spectrum constrains most directly. The network pulls
-clearly ahead on the parameters that sit at fiducial values through most of the
-corpus, where 84.5 million training samples buy a prior that ridge cannot learn
-from three thousand rows.</p>
-<p class="dim">Both caveats favour ridge: it is fitted on rows from the same
-source mix it is tested on, while CosmUFR has never seen any of these spectra.
-So this is a generous baseline, not a hostile one. Reproduce with
+<p class="muted">CosmUFR is ahead on {wins} of {n}. A plain linear fit is
+competitive on matter density, which is a real and slightly uncomfortable result:
+that parameter is written into the height of the curve, and you do not need a
+large network to read it. The network earns its keep on the parameters that are
+subtle or that the training data barely varies, where it has learned a prior
+ridge cannot get from three thousand rows.</p>
+<p class="dim">Both caveats favour ridge, which is fitted on rows from the same
+suites it is tested on while CosmUFR has never seen any of these spectra. This
+is a generous baseline, not a hostile one. Rerun it with
 <code>python scripts/ridge_baseline.py</code>.</p>
-</div></section>"""
+</div></div></section>"""
+
+
+def _audit() -> str:
+    img = _png(F.fig_weight_audit(AUDIT))
+    rows = ""
+    for name, m in AUDIT.modules.items():
+        bad = m["verdict"] == "UNTRAINED"
+        rows += (f'<tr><td><code>{html.escape(name)}</code></td>'
+                 f'<td class="dim">{"used" if m["on_default_path"] else "unused"}</td>'
+                 f'<td class="num">{m["n_zero_bias"]}/{m["n_linear"]}</td>'
+                 f'<td class="num">{m["max_abs_bias"]:.3e}</td>'
+                 f'<td class="{"bad-t" if bad else "good-t"}">'
+                 f'{"never trained" if bad else "trained"}</td></tr>')
+    return f"""<section id="audit"><div class="wrap">
+{_shead("05", "The audit", "I stress-tested my own model. It failed.",
+        "Everything above is what the model does. This is what I found when I "
+        "went looking for reasons not to trust it, and it is the reason the "
+        "roadmap looks the way it does.")}
+<div class="sbody">
+
+<div class="panel bad">
+<p class="muted" style="margin:0"><span class="lead-in">The short version.</span>
+CosmUFR is built around a "belief-settling" core: encode the spectrum into a
+belief, then refine it over 16 steps. That refinement is the research idea. The
+weights say it never trained. What learned is the read-out heads, reading a fixed
+random projection of the input. The numbers in section 04 are real, and they were
+produced by a simpler machine than the architecture diagram claims.</p>
+</div>
+
+<p class="muted">A <code>Linear</code> bias is initialised from a random draw, and
+any optimizer step moves it. Eighty-four of them are still bit-exactly
+<code>0.0</code> after forty epochs of training:</p>
+<div class="panel tight"><div class="tw"><table>
+<tr><th>module</th><th></th><th class="num">biases = 0</th>
+<th class="num">max |bias|</th><th>verdict</th></tr>{rows}</table></div></div>
+
+{_figblock("weight_audit", img)}
+
+<h3 class="display" style="font-size:20px; margin:36px 0 10px">Why, in released source</h3>
+<p class="muted">No checkpoint needed. The settling loop detaches the belief on
+entry to every step, which cuts everything upstream of it off from the loss:</p>
+<pre><code>for step in range(k):
+    b = b.detach()                      # &lt;- severs everything upstream
+    with torch.enable_grad():
+        b_g = b.requires_grad_(True)
+        E = energy_fn(b_g, z.detach(), b_prev.detach())
+        grad = torch.autograd.grad(E.sum(), b_g)[0]
+    b = b - eta * P * grad.detach()</code></pre>
+<p class="muted">One synthetic training step on a fresh model confirms it:
+<code>modules that received any gradient: ['param_head']</code></p>
+
+<h3 class="display" style="font-size:20px; margin:36px 0 10px">And a second cause, which is worse</h3>
+<div class="panel bad"><p class="muted" style="margin:0">The energy heads
+<em>did</em> train, through their own optimizer, and converged on a constant. The
+energy varies by about one part in seven million across completely different
+spectra, and its gradient has norm 0.11 against a belief of norm 16.5. With the
+step size capped where it is, sixteen steps could move the belief half a percent
+at most, whatever the input.
+<strong style="color:var(--fg)">So repairing the gradient path alone would not
+make settling work.</strong> There would still be no landscape to descend. That
+is a harder problem than the one I first reported, and I do not have a fix
+for it yet.</p></div>
+
+<p class="muted">All of this is reproducible from the released weights in about a
+minute: <code>cosmufr.weight_audit(model)</code> and
+<code>cosmufr.settling_report(...)</code>. The test that would have caught it on
+day one now ships in the repository.</p>
+</div></div></section>"""
+
+
+def _limits() -> str:
+    items = [
+        ("The belief pipeline never trained.",
+         "The encoder, the belief proposal and the settling core sit at "
+         "initialization. Section 05 has the evidence."),
+        ("The energy landscape is flat.",
+         "The energy heads collapsed to an input-independent constant, so there "
+         "is nothing for the refinement to descend."),
+        ("Reported uncertainties are meaningless.",
+         "&sigma; = 0.1 for six of eight parameters on every input, because the "
+         "uncertainty head sits at its clamp floor. Do not use them."),
+        ("The P(k) reconstruction is a constant.",
+         "The generative head returns the same value at every scale, for every "
+         "input, and for a random belief vector."),
+        ("Neutrino mass is not recovered.",
+         "R&sup2; = 0.011 measured only on data where it varies."),
+        ("The anomaly score is not usable.",
+         "The energy subsystem diverged; E_con sits around &minus;4.6e5."),
+        ("Two redshifts only.",
+         "Multi-redshift generalization is unvalidated, and that corpus has a "
+         "documented ordering defect."),
+        ("The headline table is not externally reproducible.",
+         "It was measured on a private split. The bundled benchmark narrows that "
+         "gap to about 0.03 rather than closing it."),
+        ("No ablation.",
+         "There is a linear baseline now, but no ablation of the architecture's "
+         "own components."),
+    ]
+    lis = "".join(f"<li><strong>{t}</strong> {d}</li>" for t, d in items)
+    return f"""<section id="limits"><div class="wrap">
+{_shead("07", "Limitations", "Everything known to be wrong with this.",
+        "Stated in full, because a careful reader finds all of it within ten "
+        "minutes anyway and it is better coming from me.")}
+<div class="sbody"><ol>{lis}</ol></div>
+</div></section>
+
+<footer><div class="wrap">
+<p class="muted" style="margin:0 0 10px">CosmUFR is an in-progress PhD project by
+Aaditya Rajgor. MIT licensed. If you work on cosmological inference and any of
+the open questions in the roadmap look answerable, I would like to hear from you.</p>
+<p>Code, benchmark and full report &middot; <a href="{REPO_URL}">{REPO_URL}</a><br>
+Weights and model card &middot; <a href="{HF_URL}">{HF_URL}</a></p>
+<p class="dim" style="margin-top:14px">Checkpoint sha256 {SHA256}</p>
+</div></footer>"""
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -838,8 +1194,9 @@ So this is a generous baseline, not a hostile one. Reproduce with
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _full(demo_inner: str = "", selected=None) -> str:
-    return (_hero() + _what() + _demo(demo_inner, selected) + _audit()
-            + _results() + _baseline() + _limits())
+    return (_hero() + _idea() + _input_section() + _demo(demo_inner, selected)
+            + _output_section() + _results() + _baseline() + _audit()
+            + _roadmap() + _limits())
 
 
 def _err(msg: str, detail: str = "") -> str:
@@ -857,15 +1214,13 @@ def index():
 @app.post("/infer", response_class=HTMLResponse)
 async def infer(example_id: Optional[str] = Form(None),
                 upload: Optional[UploadFile] = File(None)):
-    truth = None
-    selected = None
+    truth, selected = None, None
 
     if upload is not None and upload.filename:
         raw = await upload.read()
         if len(raw) > MAX_UPLOAD:
             return _page(_full(_err(
-                f"File is {len(raw)/1e6:.1f} MB; the limit is "
-                f"{MAX_UPLOAD/1e6:.0f} MB.")))
+                f"File is {len(raw)/1e6:.1f} MB; the limit is {MAX_UPLOAD/1e6:.0f} MB.")))
         try:
             if upload.filename.lower().endswith(".npy"):
                 arr = np.load(io.BytesIO(raw), allow_pickle=False)
@@ -873,23 +1228,20 @@ async def infer(example_id: Optional[str] = Form(None),
                 arr = np.loadtxt(io.StringIO(raw.decode("utf-8", "replace")),
                                  delimiter=",")
         except Exception as e:
-            # The message is escaped: it can contain arbitrary text from the
-            # uploaded file, and this is a public endpoint.
+            # Escaped: this text can come from an uploaded file on a public endpoint.
             return _page(_full(_err(
                 "The file could not be parsed. A .npy must be a plain array of "
                 "shape (2, 200); a .csv must be two comma-separated rows of 200 "
                 "numbers, with # comment lines ignored.",
                 f"{type(e).__name__}: {e}")))
-
         arr = np.asarray(arr, dtype=np.float64)
         if arr.ndim != 2 or arr.shape != (2, 200):
             return _page(_full(_err(
-                f"Expected shape (2, 200), got {arr.shape}. Row 1 is P(k) at "
-                f"z=0 and row 2 is P(k) at z=0.47, each 200 values on the "
-                f"training k grid. Download template.csv above for a file that "
-                f"works.")))
+                f"Expected shape (2, 200), got {arr.shape}. Row 1 is P(k) at z=0 "
+                f"and row 2 is P(k) at z=0.47, each 200 values on the training k "
+                f"grid. Download template.csv above for a file that works.")))
         pk0, pk047 = arr[0], arr[1]
-        source = f"uploaded file {upload.filename}"
+        source = f"your uploaded file, {upload.filename}"
     else:
         try:
             selected = int(example_id) if example_id else EXAMPLE_IDS[0]
@@ -902,9 +1254,8 @@ async def infer(example_id: Optional[str] = Form(None),
 
     v = validate_spectra(pk0, pk047, K_GRID)
     if not v.ok:
-        return _page(_full(_err(
-            "The input is not a usable pair of power spectra.",
-            "\n".join(v.errors)), selected))
+        return _page(_full(_err("The input is not a usable pair of power spectra.",
+                                "\n".join(v.errors)), selected))
 
     body = _run(pk0, pk047, truth, source, selected)
     if v.warnings:
@@ -924,6 +1275,5 @@ def health():
         "parameters": N_PARAMS,
         "benchmark_n": len(BENCH),
         "untrained_on_default_path": AUDIT.untrained_on_default_path,
-        "code": REPO_URL,
-        "weights": HF_URL,
+        "code": REPO_URL, "weights": HF_URL,
     })
