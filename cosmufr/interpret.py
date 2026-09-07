@@ -102,7 +102,7 @@ def read_settling(report) -> Reading:
                     "What this changes: the numbers above are not invalidated, "
                     "but they are not coming from the part of the design that "
                     "was supposed to produce them. They come from the final "
-                    "read-out step alone. Section 01 explains why."))
+                    "read-out step alone. The audit on the page explains why."))
     else:
         out.append(("bottom",
                     f"The refinement is doing real work on this run: the "
@@ -114,7 +114,7 @@ def read_settling(report) -> Reading:
                     f"its range: that is the model changing its mind, which is "
                     f"what the architecture was built to do."))
         out.append(("body",
-                    "Note this contradicts the audit in section 01, which is "
+                    "Note this contradicts the published audit, which is "
                     "measured on the released checkpoint. If you are seeing "
                     "this on the released weights, please report it."))
     return out
@@ -168,7 +168,7 @@ def read_pk(k, pk_z0, pk_z047, pk_recon, log_k=None,
                     "What this changes: it does not prove the parameters above "
                     "are wrong. It does mean one of the two independent ways we "
                     "had of checking them is unavailable, so they rest on the "
-                    "accuracy table in section 04 alone."))
+                    "accuracy tables alone."))
     else:
         worst = int(np.argmax(np.abs(resid)))
         out.append(("bottom",
@@ -283,7 +283,7 @@ def read_parameters(params: np.ndarray, sigmas: np.ndarray,
         else:
             out.append(("body",
                         "Nothing missed badly here, which is one good run "
-                        "rather than a general claim. Section 04 has the "
+                        "rather than a general claim. The accuracy tables have the "
                         "distribution across 162,795 of them."))
 
     at_floor = int(np.sum(np.abs(sigmas - 0.1) < 1e-6))
@@ -295,3 +295,116 @@ def read_parameters(params: np.ndarray, sigmas: np.ndarray,
                     f"not a measure of confidence, and it will read the same for "
                     f"any spectrum you ever give it."))
     return out
+
+
+# How well each parameter comes back on held-out data, measured where it varies.
+# Used to sort a run's eight numbers into ones worth reading and ones that are
+# not, which is the only such judgement available when a visitor uploads a
+# spectrum with no known answer.
+TRUSTWORTHY = {"Om": "good", "s8": "good", "w0": "fair", "h": "fair",
+               "Ob": "weak", "ns": "weak", "wa": "weak", "mv": "weak"}
+
+
+def read_run(params, sigmas, truth=None, reference=None, pk_z0=None,
+             settling=None) -> Reading:
+    """
+    One verdict on the whole run, in plain words, before any table.
+
+    Answers three questions in order: can these numbers be trusted at all, which
+    of the eight are worth reading, and what would have to change. Everything is
+    derived from this run, so an uploaded spectrum gets a real answer rather than
+    a disclaimer.
+    """
+    params = np.asarray(params, dtype=float)
+    good = [l for l, v in TRUSTWORTHY.items() if v == "good"]
+    fair = [l for l, v in TRUSTWORTHY.items() if v == "fair"]
+    weak = [l for l, v in TRUSTWORTHY.items() if v == "weak"]
+
+    def names(keys):
+        got = [SHORT[k] for k in keys]
+        return got[0] if len(got) == 1 else ", ".join(got[:-1]) + " and " + got[-1]
+
+    # How far outside the training range this spectrum sits, when we can tell.
+    outside = None
+    if reference is not None and pk_z0 is not None and len(reference):
+        a = np.asarray(pk_z0, dtype=float)
+        if (a > 100).any():
+            a = np.log10(np.clip(a, 1e-30, None))
+        lo = np.percentile(reference, 1, axis=0)
+        hi = np.percentile(reference, 99, axis=0)
+        outside = float(np.mean((a < lo) | (a > hi))) * 100
+
+    out: Reading = []
+
+    if truth is None and outside is not None and outside >= 40:
+        out.append(("bottom",
+                    "Do not use these numbers. Your spectrum does not look like "
+                    "anything the model was trained on."))
+        out.append(("body",
+                    f"{outside:.0f}% of it falls outside the range the model has "
+                    f"ever seen. It will still return eight confident-looking "
+                    f"numbers, because that is all it can do. A model asked "
+                    f"about unfamiliar data is usually confidently wrong, and "
+                    f"nothing on this page can tell you by how much."))
+        out.append(("body",
+                    "If that surprises you, the likeliest causes are units or "
+                    "ordering: the model expects P(k) in (Mpc/h) cubed on 200 "
+                    "bins from k = 0.1 to 4.5 h/Mpc, with the z = 0 spectrum "
+                    "first. The template linked above has the right shape."))
+        return out
+
+    if truth is None:
+        out.append(("bottom",
+                    f"Read {names(good)} and treat the rest as indicative."))
+        if outside is not None:
+            out.append(("body",
+                        f"Your spectrum sits inside the range the model was "
+                        f"trained on at {100 - outside:.0f}% of scales, so it is "
+                        f"being asked about familiar territory. That is the only "
+                        f"check available here: this spectrum has no known "
+                        f"answer, so nothing can tell you whether these eight "
+                        f"numbers are right."))
+        out.append(("body",
+                    f"What is known is how each of the eight behaves on data "
+                    f"where the answer was known. {names(good).capitalize()} "
+                    f"come back reliably. {names(fair).capitalize()} come back "
+                    f"about half the time. {names(weak).capitalize()} are not "
+                    f"recovered, and neutrino mass in particular is barely "
+                    f"distinguishable from noise. Those rankings are properties "
+                    f"of the model, so they apply to your run too."))
+        out.append(("body",
+                    "The uncertainty column is not an uncertainty. It reports a "
+                    "fixed number on every input, so it tells you nothing about "
+                    "this spectrum."))
+        return out
+
+    truth = np.asarray(truth, dtype=float)
+    err = {l: abs(params[i] - truth[i]) / PRIOR_RANGE[l]
+           for i, l in enumerate(PARAM_LABELS)}
+    close = [l for l, v in err.items() if v < 0.05]
+    missed = [l for l, v in err.items() if v > 0.10]
+
+    out.append(("bottom",
+                f"On this universe the model got {len(close)} of the eight close "
+                f"and {len(missed)} clearly wrong, which is about what its track "
+                f"record predicts."))
+    out.append(("body",
+                f"This example came from a simulation, so the real answer is "
+                f"recorded and the last column is a score rather than a guess. "
+                f"The pattern is not luck: a power spectrum shows the amount and "
+                f"the lumpiness of matter almost directly, so {names(good)} come "
+                f"back well. It says much less about how fast the universe is "
+                f"expanding or what dark energy is doing, so those come back "
+                f"worse. {names(weak).capitalize()} are the ones this model does "
+                f"not recover at all."))
+    if settling is not None and getattr(settling, "belief_movement", 1) * 100 < 1:
+        out.append(("body",
+                    "One thing to know before reading the figures below: the "
+                    "sixteen refinement steps did nothing on this run, as they "
+                    "do nothing on every run. The answer above is what the model "
+                    "had before it started thinking."))
+    out.append(("body",
+                "The uncertainty column is not an uncertainty. It reports a "
+                "fixed number on every input."))
+    return out
+

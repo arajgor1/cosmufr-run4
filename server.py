@@ -37,7 +37,8 @@ import cosmufr
 from cosmufr import figures as F
 from cosmufr.diagram import architecture_svg
 from cosmufr.explain import FIGURE_NOTES, PARAM_MEANING
-from cosmufr.interpret import read_parameters, read_pk, read_settling
+from cosmufr.interpret import (read_parameters, read_pk, read_run,
+                               read_settling)
 from cosmufr.load import PARAM_LABELS
 from cosmufr.validate import K_GRID, validate_spectra
 
@@ -71,7 +72,12 @@ SOURCE_BLURB = {
 MODEL = cosmufr.load_model(ckpt_path=os.environ.get("COSMUFR_CKPT"), device="cpu")
 BENCH = cosmufr.load_benchmark()
 AUDIT = cosmufr.weight_audit(MODEL)
+CONTACT_EMAIL = "aadityarajgor27@gmail.com"
 N_PARAMS = sum(p.numel() for p in MODEL.parameters())
+# What fraction of the network each top-level module holds. The headline fact of
+# the audit is not which parts failed but how much of the model they are.
+MODULE_SHARE = {n: sum(p.numel() for p in mod.parameters()) / N_PARAMS * 100
+                for n, mod in MODEL.named_children()}
 
 _reports = Path(__file__).parent / "reports"
 REPORT = json.loads((_reports / "honest_eval.json").read_text()) \
@@ -148,7 +154,12 @@ nav.top .wrap{display:flex; align-items:center; gap:24px; height:66px}
 .brand svg{width:19px; height:19px; color:#fff}
 .brand b{font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:14px;
   letter-spacing:.22em; text-transform:uppercase; color:#fff}
-.navlinks{display:flex; gap:26px; margin-left:auto; align-items:center; overflow-x:auto}
+.navlinks{display:flex; gap:26px; margin-left:auto; align-items:center;
+  overflow-x:auto; min-width:0; scrollbar-width:none}
+.navlinks::-webkit-scrollbar{display:none}
+/* On a phone the chapter names cannot fit and scrolling them is not a real
+   navigation. The page is short enough to scroll, and the CTA still works. */
+@media (max-width:640px){.navlinks{display:none}}
 .navlinks a{color:var(--mut); font-size:11.5px; letter-spacing:.13em;
   text-transform:uppercase; white-space:nowrap; font-weight:400; transition:color .18s}
 .navlinks a:hover{color:#fff}
@@ -349,10 +360,53 @@ img.fig{width:100%; height:auto; border-radius:11px; margin:4px 0 0;
   line-height:1.45; margin-bottom:12px}
 .reading p:last-child{margin-bottom:0}
 .panel .reading{margin:16px 0 0}
+#result + h3 + p + .reading{border-left-width:3px; padding:4px 0 4px 20px;
+  margin:0 0 22px}
+#result + h3 + p + .reading .rbottom{font-size:19px; line-height:1.4}
 .figcap .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(215px,1fr)); gap:16px}
 .figcap .lbl{font-family:var(--mono); font-size:9.5px; letter-spacing:.17em;
   text-transform:uppercase; color:var(--accent); display:block; margin-bottom:5px}
 .figcap p{margin:0; font-size:13.5px; color:var(--mut); line-height:1.6}
+
+/* ── take it away ─────────────────────────────────────────────────────── */
+.two-up{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px}
+.two-up .panel{margin:0}
+h4.ch{margin:0 0 12px; font-family:var(--mono); font-size:10px; letter-spacing:.15em;
+  text-transform:uppercase; color:var(--accent)}
+
+/* ── the standing of the work ─────────────────────────────────────────── */
+.verdicts{display:grid; grid-template-columns:repeat(auto-fit,minmax(268px,1fr));
+  gap:14px; margin:24px 0}
+.vd{border:1px solid var(--hair); border-top-width:3px; border-radius:11px;
+  padding:20px 22px; background:rgba(20,20,23,.42)}
+.vd.good{border-top-color:var(--good)}
+.vd.bad{border-top-color:var(--bad)}
+.vd.next{border-top-color:var(--accent)}
+.vd h4{margin:0 0 12px; font-family:"Space Grotesk",Inter,sans-serif;
+  font-size:16px; font-weight:600; color:#fff; letter-spacing:-.01em}
+.vd ul{margin:0; padding-left:17px}
+.vd li{margin-bottom:9px; font-size:13.5px; line-height:1.6; color:var(--mut)}
+.vd li:last-child{margin-bottom:0}
+.sub-lede{max-width:72ch; margin:-6px 0 20px; color:var(--mut)}
+
+/* ── the three outcomes ───────────────────────────────────────────────── */
+.outcomes{display:grid; gap:14px; margin:22px 0 26px}
+.outcome{border:1px solid var(--hair); border-left-width:3px; border-radius:11px;
+  padding:20px 22px; background:rgba(20,20,23,.42)}
+.outcome.bad{border-left-color:var(--bad)}
+.outcome.warn{border-left-color:var(--warn)}
+.outcome.good{border-left-color:var(--good)}
+.oc-head{display:flex; align-items:baseline; justify-content:space-between;
+  gap:14px; flex-wrap:wrap; margin-bottom:8px}
+.oc-head h4{margin:0; font-family:"Space Grotesk",Inter,sans-serif; font-size:17px;
+  font-weight:600; color:#fff; letter-spacing:-.01em}
+.oc-share{font-family:var(--mono); font-size:10px; letter-spacing:.13em;
+  text-transform:uppercase; color:var(--dim); white-space:nowrap}
+.outcome p{margin:0 0 14px; font-size:14px; line-height:1.65; max-width:74ch}
+.oc-tbl{font-size:13px}
+.oc-tbl td{padding:5px 14px 5px 0; border:0}
+.oc-tbl td:first-child{color:var(--fg)}
+.panel.warn{border-color:rgba(230,162,60,.34)}
 
 /* ── evolution ladder ─────────────────────────────────────────────────── */
 .steps{border-left:1px solid var(--line); margin-left:6px}
@@ -513,10 +567,11 @@ MARK = ('<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/sv
         'fill="none" stroke="currentColor" stroke-width="9"/>'
         '<circle cx="50" cy="50" r="9" fill="currentColor"/></svg>')
 
-NAV_LINKS = [("#audit", "The finding"), ("#idea", "What this is"),
-             ("#demo", "Live demo"), ("#results", "Accuracy"),
-             ("#baseline", "Baseline"), ("#ceiling", "What I got wrong"),
-             ("#evolution", "History"), ("#roadmap", "Where it goes")]
+NAV_LINKS = [("#what-we-did", "What we did"),
+             ("#what-we-observed", "What we observed"),
+             ("#what-we-conclude", "What we conclude"),
+             ("#demo", "Try it"),
+             ("#the-code", "The code")]
 
 
 # The figures are generated by cosmufr.figures, which draws for a paper: black
@@ -612,6 +667,34 @@ def _figblock(key: str, img_src: str, reading=None) -> str:
             f'alt="{html.escape(n["title"])}">'
             f'<div class="figcap">{_reading(reading)}'
             f'<div class="grid">{inner}</div></div></div>')
+
+
+def _sub(section: str, heading: str, standfirst: str = "") -> str:
+    """One rendered section's body, relabelled for its place in the argument."""
+    OPEN = '<div class="sbody">'
+    start = section.index(OPEN) + len(OPEN)
+    # Sections close their body then their wrapper, sometimes on one line and
+    # sometimes on two. Cut at the wrapper either way.
+    end = section.rindex("</div></section>")
+    body = section[start:end].rstrip()
+    if body.endswith("</div>"):
+        body = body[:-6]
+    lead = f'<p class="muted sub-lede">{standfirst}</p>' if standfirst else ""
+    return f'<h3 class="display fold">{heading}</h3>{lead}{body}'
+
+
+def _chapter(num: str, cat: str, title: str, sub: str, *blocks: str) -> str:
+    """A top-level question, and the evidence that answers it."""
+    anchor = cat.lower().replace(" ", "-")
+    return (f'<section id="{anchor}"><div class="wrap">'
+            f'{_shead(num, cat, title, sub)}'
+            f'<div class="sbody">{"".join(blocks)}</div></div></section>')
+
+
+def _extend(primary: str, *fragments: str) -> str:
+    """Append already-prepared fragments into a rendered section's body."""
+    CLOSE = "</div></div></section>"
+    return primary[:primary.rindex(CLOSE)] + "".join(fragments) + CLOSE
 
 
 def _fold(primary: str, *rest: str) -> str:
@@ -745,14 +828,15 @@ core never trained.</em></h1>
 power spectrum in one forward pass. It was designed to reach them by refining a
 belief over sixteen steps. I stress-tested the released weights and that
 refinement had never received a gradient, so the answers come from one read-out
-head on a frozen random projection. The audit is the first thing on this page,
-the model runs live further down, and every number below is measured.</p>
+head on a frozen random projection. This page is in five parts: what we did,
+what we observed across eight training runs, what we conclude, the model running
+live on data you choose, and the code. Every number below is measured.</p>
 <p class="lede caveat"><span class="lead-in">Before anything else.</span> The
 input here is a matter power spectrum from emulators, not a measured observable.
 No survey window, no shot noise, no mask, no galaxy bias. Pointing this at real
 survey data would need all of them, and that work does not exist yet.</p>
 <div class="ctas">
-  <a class="btn btn-p" href="#audit">What the audit found &rarr;</a>
+  <a class="btn btn-p" href="#what-we-observed">What we found &rarr;</a>
   <a class="btn btn-g" href="#demo">Run it on real data</a>
 </div>
 <div class="metrics">
@@ -904,7 +988,7 @@ the model recovered that parameter for that universe.</p></div>
 <div class="card"><div class="n">Read with care</div><h4>The &sigma; column</h4>
 <p>The model reports an uncertainty, and it is not trustworthy. It emits the same
 constant on every input, so it is flagged in the results table and should be
-ignored. Section 01 explains why.</p></div>
+ignored. What we observed explains why.</p></div>
 <div class="card"><div class="n">Expect a spread</div><h4>Not all eight are equal</h4>
 <p>The spectrum constrains matter density and clumpiness strongly, expansion rate
 and dark energy weakly, and neutrino mass essentially not at all. That ordering
@@ -975,6 +1059,93 @@ once, a catastrophic regression, and no way to tell which change caused it.
 Everything after that is single-change-at-a-time with a threshold written down
 before the run starts.</p>
 </div></div></section>"""
+
+
+def _conclusion() -> str:
+    """The standing of the work, stated plainly enough to disagree with."""
+    vary = REPORT["full_val_metrics_varying_only"] if REPORT else {}
+    om = vary.get("Om", {}).get("rmse")
+    s8 = vary.get("s8", {}).get("rmse")
+    om_txt = f"{om:.3f}" if om else "0.027"
+    s8_txt = f"{s8:.3f}" if s8 else "0.028"
+
+    return f"""
+<div class="panel accent">
+<p class="muted" style="margin:0 0 14px"><span class="lead-in">In one
+paragraph.</span> The architecture this project set out to test has not been
+tested. The mechanism that makes it interesting never ran, so nothing here is
+evidence for or against the idea. What did get built is a fast, honest, checkable
+baseline: it recovers two of eight cosmological quantities usefully, is beaten by
+a linear fit on one of them, and collapses on the one slice of data drawn from
+real gas physics. That is a starting point with a clear next step, not a
+result.</p>
+<p class="muted" style="margin:0">The most useful output of the year is the
+audit, and the second most useful is the retraction below it. Both are about how
+easy it was to run eight training runs, watch the loss fall, and be wrong the
+whole time.</p>
+</div>
+
+<div class="verdicts">
+  <div class="vd good">
+    <h4>What it can do today</h4>
+    <ul>
+      <li>Return eight cosmological parameters from a power spectrum in about a
+          third of a second on one CPU core, with no simulator and no chain.</li>
+      <li>Recover matter density and clustering amplitude to about {om_txt} and
+          {s8_txt}, which is roughly four times worse than a real survey but the
+          right shape.</li>
+      <li>Reproduce every published number from a benchmark that ships with the
+          code, on anyone's machine.</li>
+      <li>Report its own faults, live, on every run.</li>
+    </ul>
+  </div>
+  <div class="vd bad">
+    <h4>What it cannot do</h4>
+    <ul>
+      <li>Give you an uncertainty. The confidence output is a fixed number and
+          should be ignored.</li>
+      <li>Touch real survey data. The input is a clean simulated spectrum; a
+          measured one arrives with a survey window, shot noise, a mask and
+          galaxy bias, none of which this has ever seen.</li>
+      <li>Handle gas physics. On the one slice from a full hydrodynamic
+          simulation it does worse than guessing the average.</li>
+      <li>Separate neutrino mass from feedback. Over these scales the two look
+          alike and nothing in the design distinguishes them.</li>
+      <li>Support any claim about the architecture, which never ran.</li>
+    </ul>
+  </div>
+  <div class="vd next">
+    <h4>What has to happen next, in order</h4>
+    <ul>
+      <li><strong>Reconnect the refinement.</strong> A small code change, guarded
+          by a test that already exists. Free, and verifiable before spending
+          anything on training.</li>
+      <li><strong>Give the scoring heads something to score.</strong> The harder
+          one. Without it the reconnection buys nothing, because there is still
+          no landscape to descend.</li>
+      <li><strong>Produce a real uncertainty</strong>, and check it the way the
+          field checks one: does the stated interval contain the truth as often
+          as it claims?</li>
+      <li><strong>Rebalance the training data.</strong> The parameters it
+          recovers worst are the ones the corpus barely varies.</li>
+      <li><strong>Then one training run</strong>, with a pass mark written down
+          before it starts rather than after.</li>
+    </ul>
+  </div>
+</div>
+
+<div class="panel">
+<p class="muted" style="margin:0 0 12px"><span class="lead-in">What this is
+aimed at.</span> A survey measurement should be interpretable in seconds rather
+than weeks, with an uncertainty you can defend to a referee. Get there and the
+analyses nobody runs today because they cost too much become ordinary: sweep an
+entire survey, re-run it under every systematic, close the loop between an
+observation and a constraint inside one working session.</p>
+<p class="muted" style="margin:0">Nothing here is at that point. The distance is
+the list above, and the honest thing to say about the list is that the second
+item on it is a research problem rather than a task.</p>
+</div>
+"""
 
 
 def _roadmap() -> str:
@@ -1255,12 +1426,16 @@ def _run(pk0, pk047, truth, source_label: str, selected=None) -> str:
     return f"""<div id="result"></div>
 <h3 class="display" style="font-size:24px; margin:38px 0 6px">Result</h3>
 <p class="muted" style="margin:0 0 4px">Input: {html.escape(source_label)}</p>
-<p class="dim" style="margin:0 0 16px">Belief moved {report.belief_movement*100:.3f}%
-of its norm during settling; energy changed by {report.energy_drop:.2e}, which is
-{report.energy_drop_in_ulps:.1f} float32 resolution steps.</p>
+{_reading(read_run(result.params_array, result.sigmas_array, truth,
+                  reference=BENCH_LOGPK, pk_z0=pk0, settling=report))}
 <div class="panel"><div class="tw"><table>{head}{rows}</table></div>
 {_reading(read_parameters(result.params_array, result.sigmas_array, truth))}
 {truth_note}{dl}</div>
+<p class="dim" style="margin:14px 0 0">Diagnostics for this run: the belief moved
+{report.belief_movement*100:.3f}% of its norm across the sixteen refinement
+steps, and the score it was meant to be descending changed by
+{report.energy_drop:.2e}, which is {report.energy_drop_in_ulps:.1f} float32
+resolution steps &mdash; the smallest amounts the arithmetic can represent.</p>
 {_timing_panel(t)}
 {_figblock("settling", fig_settle, read_settling(report))}
 {_figblock("pk", fig_pk, read_pk(K_GRID, pk0, pk047, result.pk_recon,
@@ -1272,7 +1447,7 @@ of its norm during settling; energy changed by {report.energy_drop:.2e}, which i
 
 def _demo(inner: str = "", selected=None) -> str:
     return f"""<section id="demo"><div class="wrap">
-{_shead("03", "Live demo", "Run it yourself, right now.",
+{_shead("04", "Try it yourself", "Run it yourself, right now.",
         "The released checkpoint, loaded in this container, running on whatever "
         "you give it. Nothing is cached and nothing is precomputed.")}
 <div class="sbody">{_form(selected)}{inner}</div>
@@ -1465,13 +1640,36 @@ R&sup2; {m[worst]["r2"]:.2f}.</p>
 <p class="dim" style="margin:12px 0 0">A negative R&sup2; means the model would
 have done better by ignoring the spectrum entirely and guessing the average every
 time.</p></div>
-<p class="muted"><span class="lead-in">Why this matters more than the headline
-number.</span> The obvious question about a model trained on fourteen simulation
-suites is what happens on a suite it was not trained on. This is the closest
-thing to that test in the release, and the answer is that it collapses. Real
-survey data has the gas physics in it. Until this row is understood, the numbers
-above describe how well the model interpolates between emulators, which is a
-narrower claim than it sounds.</p>"""
+<p class="muted"><span class="lead-in">What this does and does not
+show.</span> The obvious question about a model trained on many simulation suites
+is what happens on data unlike any of them, and this is the closest thing to that
+test in the release. It fails it. But we cannot yet call it a clean result about
+gas physics, for a reason worth stating.</p>
+
+<div class="panel warn">
+<p class="muted" style="margin:0 0 12px"><span class="lead-in">A confound we
+found while testing this page.</span> This suite differs from the rest of the
+corpus in two ways at once, not one. It has the gas physics. It also has its two
+redshift channels stored in the opposite order to every other suite: the gap
+between them runs about &minus;0.32 in log&#8321;&#8320; here and about
+&#43;0.32 everywhere else, the same number with the sign flipped. The model was
+trained on one convention and is being handed the other.</p>
+<p class="muted" style="margin:0 0 12px">Two checks, and they disagree with each
+other. Swapping the rows back does not rescue the scores. And one other suite,
+<code>camb_nl</code>, is stored in the same reversed order and scores normally.
+Together those point at the gas physics rather than the ordering as the cause,
+but pointing is not measuring.</p>
+<p class="muted" style="margin:0">So the honest statement is narrower than the
+one we started to write: the model fails badly on the only slice of real
+hydrodynamics it is tested against, and we cannot yet say how much of that is the
+physics and how much is a data defect. Separating them needs a rerun on the full
+suite with the ordering corrected, which is now on the list.</p>
+</div>
+
+<p class="muted">What survives either way: every number elsewhere on this page
+describes how well the model moves between emulators that resemble one another.
+Real survey data has the gas physics in it. That is a narrower claim than the
+headline table sounds.</p>"""
 
 
 def _neutrino_finding() -> str:
@@ -1560,6 +1758,94 @@ directly on the same 400 inputs. Rerun with
 </div></div></section>"""
 
 
+# How each part of the network came out of training, and in plain words what it
+# was supposed to be doing. The verdict column of the weight audit separates
+# "never got a gradient" from "got one"; it cannot tell whether a module that did
+# train landed anywhere useful, so that judgement is recorded here against the
+# measurement that supports it, listed in the section itself.
+MODULE_STORY = {
+    "obs_encoder":      ("Reads the spectrum", "untrained"),
+    "belief_proposal":  ("Forms the first guess", "untrained"),
+    "settling":         ("Refines the guess, 16 times", "untrained"),
+    "halo_head":        ("A side output, unused here", "untrained"),
+    "obs_energy_head":  ("Scores how well a guess fits the data", "degenerate"),
+    "constraint_head":  ("Scores how self-consistent a guess is", "degenerate"),
+    "dyn_energy_head":  ("Scores how far a guess has moved", "degenerate"),
+    "gen_head":         ("Redraws the spectrum from the guess", "degenerate"),
+    "unc_head":         ("Says how sure the model is", "degenerate"),
+    "param_head":       ("Turns the guess into eight numbers", "works"),
+    "obs_encoder_single":     ("Unused single-redshift path", "unused"),
+    "belief_proposal_seq":    ("Unused single-redshift path", "unused"),
+}
+
+GROUP_COPY = {
+    "untrained": (
+        "Never trained",
+        "bad",
+        "These received no gradient at any point, in any of the eight runs. They "
+        "hold the random numbers they were created with. This is not a matter of "
+        "training too little: a line of code disconnected them from the thing "
+        "being optimised, so nothing was ever asking them to change."),
+    "degenerate": (
+        "Trained, and went somewhere useless",
+        "warn",
+        "These did receive a gradient and did change. They settled on answers "
+        "that ignore the input. The three scoring heads return the same number "
+        "for wildly different spectra; the redraw head returns one value at every "
+        "scale; the confidence head sits on the smallest number it is allowed to "
+        "emit. Training worked on them. What it converged to is useless."),
+    "works": (
+        "Trained, and works",
+        "good",
+        "Every number this model reports comes from here. It reads a fixed "
+        "random projection of the input, because everything upstream of it never "
+        "moved, and it still recovers matter density and clustering amplitude."),
+}
+
+
+def _module_groups():
+    """Group the audited modules by how they came out of training."""
+    out = {"untrained": [], "degenerate": [], "works": [], "unused": []}
+    total = sum(m.get("n_params", 0) for m in AUDIT.modules.values()) or N_PARAMS
+    for name, m in AUDIT.modules.items():
+        job, group = MODULE_STORY.get(name, ("", "degenerate"))
+        if not m["on_default_path"]:
+            group = "unused"
+        out[group].append((name, job, MODULE_SHARE.get(name, 0.0)))
+    return out
+
+
+def _outcome_table() -> str:
+    """The three outcomes, with what each part was for and how big it is."""
+    groups = _module_groups()
+    body = ""
+    for key in ("untrained", "degenerate", "works"):
+        rows = groups[key]
+        if not rows:
+            continue
+        title, tone, gloss = GROUP_COPY[key]
+        share = sum(sh for _, _, sh in rows)
+        cells = "".join(
+            f'<tr><td class="dim">{html.escape(job)}</td>'
+            f'<td><code>{html.escape(n)}</code></td>'
+            f'<td class="num dim">{sh:.1f}%</td></tr>'
+            for n, job, sh in sorted(rows, key=lambda r: -r[2]))
+        body += (f'<div class="outcome {tone}">'
+                 f'<div class="oc-head"><h4>{title}</h4>'
+                 f'<span class="oc-share">{share:.1f}% of the network</span></div>'
+                 f'<p class="muted">{gloss}</p>'
+                 f'<div class="tw"><table class="oc-tbl">{cells}</table></div>'
+                 f'</div>')
+    named = sum(sh for g in ("untrained", "degenerate", "works")
+                for _, _, sh in groups[g])
+    rest = 100.0 - named
+    foot = (f'<p class="dim" style="margin:6px 0 0">The remaining {rest:.0f}% is '
+            f'a second, unused copy of the reading and guessing stages, built for '
+            f'single-redshift input and never called here, plus a bank of stored '
+            f'reference states. Both trained. Neither affects an answer.</p>')
+    return f'<div class="outcomes">{body}</div>{foot}'
+
+
 def _audit() -> str:
     img = _png(F.fig_weight_audit(AUDIT))
     rows = ""
@@ -1571,42 +1857,59 @@ def _audit() -> str:
                  f'<td class="num">{m["max_abs_bias"]:.3e}</td>'
                  f'<td class="{"bad-t" if bad else "good-t"}">'
                  f'{"never trained" if bad else "trained"}</td></tr>')
-    return f"""<section id="audit"><div class="wrap">
-{_shead("01", "The finding", "I stress-tested my own model. It failed.",
-        "Everything above is what the model does. This is what I found when I "
-        "went looking for reasons not to trust it, and it is the reason the "
-        "roadmap looks the way it does.")}
+    return f"""<section id="what-we-observed"><div class="wrap">
+{_shead("02", "What we observed", "The design did not survive its own weights.",
+        "We trained the model eight times. Training ran. Then we opened the "
+        "finished weights and checked, part by part, what had actually changed. "
+        "This is what we found, and it is the reason everything after it is "
+        "written the way it is.")}
 <div class="sbody">
 
 <div class="panel bad">
-<p class="muted" style="margin:0"><span class="lead-in">The short version.</span>
-CosmUFR is built around a "belief-settling" core: encode the spectrum into a
-belief, then refine it over 16 steps. That refinement is the research idea. The
-weights say it never trained. What learned is the read-out heads, reading a fixed
-random projection of the input. The numbers in section 04 are real, and they were
-produced by a simpler machine than the architecture diagram claims.</p>
+<p class="muted" style="margin:0 0 12px"><span class="lead-in">The finding in one
+paragraph.</span> The idea this model is built on is that it should reach its
+answer gradually: read the spectrum, form a rough guess about the universe, then
+sharpen that guess sixteen times before answering. The finished weights show the
+sharpening never happened, and could not have. The parts that were supposed to do
+it are still holding the random numbers they were created with, in every one of
+the eight runs. What produces the answers is a single small read-out layer at the
+very end.</p>
+<p class="muted" style="margin:0"><span class="lead-in">Which is not the same as
+"nothing trained".</span> Most of the network did train. The distinction matters
+and it is the next table.</p>
 </div>
 
-<h3 class="display" style="font-size:20px; margin:34px 0 6px">The architecture, marked up</h3>
-<p class="muted" style="max-width:66ch; margin:0 0 6px">Every block the design
-calls for, coloured by what its weights actually show. Section 02 has the same
-diagram without the verdicts, alongside what each block was meant to do.</p>
-<div class="diagram"><p class="cap">Inference path &middot; what the weights say</p>
-{architecture_svg(audit=True)}</div>
+<h3 class="display" style="font-size:21px; margin:44px 0 14px">Three things can happen to a part of a network. All three happened here.</h3>
+<p class="muted" style="max-width:70ch">A part can fail to receive any
+instruction, in which case it never changes. It can receive instruction, learn,
+and learn something worthless. Or it can work. Reading the finished weights tells
+you which, part by part.</p>
+{_outcome_table()}
 
-<p class="muted">Training zero-initialises every <code>Linear</code> bias, and the
-first nonzero gradient to reach one moves it off zero. Eighty-four of them are
-still bit-exactly <code>0.0</code> after forty epochs, so no gradient ever
-arrived:</p>
+<p class="muted"><span class="lead-in">So both of these are true.</span> Training
+ran, eight times, and moved most of the model. And the three parts the whole
+design rests on never moved at all, because they were disconnected from what was
+being optimised. Running training more times could not have fixed that. Nothing
+was asking them to change.</p>
+
+<h3 class="display" style="font-size:21px; margin:48px 0 10px">How we know</h3>
+<p class="muted">Training sets every bias in the network to exactly zero before
+it starts, and the first instruction to reach one moves it off zero. Eighty-four
+of them are still bit-exactly <code>0.0</code> after forty epochs. A second,
+independent check: we compared the finished weights against a checkpoint from
+thirty-five epochs earlier, and in those three parts all 204 numbers are
+identical to the last digit, while the read-out layers had moved by 66 to 79
+percent.</p>
 <div class="panel tight"><div class="tw"><table>
 <tr><th>module</th><th></th><th class="num">biases = 0</th>
 <th class="num">max |bias|</th><th>verdict</th></tr>{rows}</table></div></div>
 
 {_figblock("weight_audit", img)}
 
-<h3 class="display" style="font-size:20px; margin:36px 0 10px">Why, in released source</h3>
-<p class="muted">No checkpoint needed. The settling loop detaches the belief on
-entry to every step, which cuts everything upstream of it off from the loss:</p>
+<h3 class="display" style="font-size:21px; margin:48px 0 10px">Why it happened</h3>
+<p class="muted">One line, visible in the released code, no checkpoint needed.
+The refinement loop cuts its own working state loose at the top of every step,
+which severs the connection back to everything that produced it:</p>
 <pre><code>for step in range(k):
     b = b.detach()                      # &lt;- severs everything upstream
     with torch.enable_grad():
@@ -1615,24 +1918,36 @@ entry to every step, which cuts everything upstream of it off from the loss:</p>
         grad = torch.autograd.grad(E.sum(), b_g)[0]
     b = b - eta * P * grad.detach()</code></pre>
 <p class="muted">One synthetic training step on a fresh model confirms it:
-<code>modules that received any gradient: ['param_head']</code></p>
+<code>modules that received any gradient: ['param_head']</code>.</p>
 
-<h3 class="display" style="font-size:20px; margin:36px 0 10px">And a second cause, which is worse</h3>
-<div class="panel bad"><p class="muted" style="margin:0">The energy heads
-<em>did</em> train, through their own optimizer, and converged on a constant. The
-energy varies by about one part in seven million across completely different
-spectra, and its gradient has norm 0.11 against a belief of norm 16.5. With the
-step size capped where it is, sixteen steps could move the belief half a percent
-at most, whatever the input.
-<strong style="color:var(--fg)">So repairing the gradient path alone would not
-make settling work.</strong> There would still be no landscape to descend. That
-is a harder problem than the one I first reported, and I do not have a fix
-for it yet.</p></div>
+<h3 class="display" style="font-size:21px; margin:48px 0 10px">And reconnecting it would not be enough</h3>
+<p class="muted" style="max-width:70ch">This is the part that took longest to
+accept. The refinement was meant to work by rolling downhill: the scoring heads
+define a landscape, and each step moves the guess towards lower ground. Those
+scoring heads did train. They converged on a landscape that is flat.</p>
+<div class="panel warn"><div class="tw"><table>
+<tr><th>what we measured</th><th class="num">value</th><th>what it means</th></tr>
+<tr><td>Spread in the score across completely different spectra</td>
+<td class="num">1 part in 7,000,000</td>
+<td class="dim">the landscape is the same height everywhere</td></tr>
+<tr><td>Steepness of the slope, against the size of the guess</td>
+<td class="num">0.11 vs 16.5</td>
+<td class="dim">nothing to roll towards</td></tr>
+<tr><td>Furthest sixteen steps could move the guess</td>
+<td class="num">about 0.5%</td>
+<td class="dim">whatever spectrum you give it</td></tr>
+</table></div></div>
+<p class="muted">So there are two faults, not one. The refinement was
+disconnected, and the thing it was meant to be following does not exist. Fixing
+the first is a small change we can verify before spending anything on training.
+Fixing the second means changing how the scoring heads are trained at all, and we
+do not have a solution we believe in yet. It is written up in what needs work.</p>
 
-<p class="muted">All of this is reproducible from the released weights in about a
-minute: <code>cosmufr.weight_audit(model)</code> and
+<p class="dim">All of this reproduces from the released weights in about a
+minute, with <code>cosmufr.weight_audit(model)</code> and
 <code>cosmufr.settling_report(...)</code>. The test that would have caught it on
-day one now ships in the repository.</p>
+day one now ships in the repository, written so that it fails loudly if a future
+checkpoint ever fixes the fault.</p>
 </div></div></section>"""
 
 
@@ -1724,7 +2039,7 @@ why it is here.</span> Nine days and seven training runs spent defending a numbe
 that meant nothing, when the calculation that would have settled it &mdash;
 finite-difference one emulator, look at the singular values of the resulting
 Jacobian &mdash; takes an afternoon and needs no GPU at all. The plateau I kept
-hitting was the severed gradient path in section 01, which had been there the
+hitting was the severed gradient path above, which had been there the
 whole time.</p>
 <p class="muted" style="margin:0">I found this because the audit forced me back
 through the reasoning, not because I checked whether my own calculation was the
@@ -1734,11 +2049,87 @@ by a test, and the bad reasoning was found only by accident.</p>
 </div></div></section>"""
 
 
+def _the_code() -> str:
+    """Install it, run it, check it, get in touch."""
+    return f"""<section id="the-code"><div class="wrap">
+{_shead("05", "The code", "Take it apart yourself.",
+        "Everything on this page comes from a public repository and a public "
+        "checkpoint. The test set ships with the code, so you can regenerate "
+        "every number here without asking anyone for anything.")}
+<div class="sbody">
+
+<div class="two-up">
+<div class="panel">
+<h4 class="ch">Install and run</h4>
+<pre><code>git clone {REPO_URL}
+cd cosmufr-run4
+pip install -e ".[demo]"</code></pre>
+<p class="dim" style="margin:12px 0 0">Weights download automatically on first
+use, about 545 MB, checked against a recorded hash.</p>
+</div>
+<div class="panel">
+<h4 class="ch">Infer on one spectrum</h4>
+<pre><code>import cosmufr
+
+model  = cosmufr.load_model()
+bench  = cosmufr.load_benchmark()
+result = cosmufr.infer(bench.pk_z0[0],
+                       bench.pk_z047[0],
+                       model=model)
+print(result.params)</code></pre>
+<p class="dim" style="margin:12px 0 0">Raw P(k) or log&#8321;&#8320; P(k) are both
+accepted, on 200 bins over k in [0.1, 4.5] h/Mpc at z = 0 and z = 0.47.</p>
+</div>
+</div>
+
+<div class="two-up" style="margin-top:14px">
+<div class="panel">
+<h4 class="ch">Regenerate every number on this page</h4>
+<pre><code>python -m cosmufr.reproduce</code></pre>
+<p class="dim" style="margin:12px 0 0">Rebuilds the accuracy tables from the
+bundled 6,000-case benchmark, to about one part in a million.</p>
+</div>
+<div class="panel">
+<h4 class="ch">Check the audit for yourself</h4>
+<pre><code>import cosmufr
+m = cosmufr.load_model()
+print(cosmufr.weight_audit(m).table())
+print(cosmufr.settling_report(m, pk0, pk047))</code></pre>
+<p class="dim" style="margin:12px 0 0">About seven seconds. The first prints
+which parts of the network ever trained.</p>
+</div>
+</div>
+
+<h3 class="display" style="font-size:21px; margin:46px 0 12px">Where everything lives</h3>
+<div class="panel tight"><div class="tw"><table>
+<tr><th>what</th><th>where</th></tr>
+<tr><td>Code, benchmark, tests, full evaluation report</td>
+    <td><a href="{REPO_URL}">{REPO_URL.replace("https://", "")}</a></td></tr>
+<tr><td>Weights and model card</td>
+    <td><a href="{HF_URL}">{HF_URL.replace("https://", "")}</a></td></tr>
+<tr><td>This page, running the real model</td>
+    <td><a href="/">the demo above</a></td></tr>
+</table></div>
+<p class="dim" style="margin:12px 0 0">Checkpoint sha256 {SHA256}</p></div>
+
+<div class="panel accent" style="margin-top:24px">
+<p class="muted" style="margin:0 0 10px"><span class="lead-in">Get in
+touch.</span> CosmUFR is an active research programme by Aaditya Rajgor,
+released open under MIT. The two questions I would most value an outside view on:
+whether gradual refinement is worth pursuing at all once the code fault is
+repaired, or whether a single-pass estimator reaches the same place; and how much
+of the weakness on the expansion rate is a real limit of this measurement rather
+than a limit of the training data.</p>
+<p class="muted" style="margin:0"><a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a></p>
+</div>
+</div></div></section>"""
+
+
 def _limits() -> str:
     items = [
         ("The belief pipeline never trained.",
          "The encoder, the belief proposal and the settling core sit at "
-         "initialization. Section 01 has the evidence."),
+         "initialization. See what we observed, above."),
         ("The energy landscape is flat.",
          "The energy heads collapsed to an input-independent constant, so there "
          "is nothing for the refinement to descend."),
@@ -1763,10 +2154,16 @@ def _limits() -> str:
          "own components, and no network of matched size trained directly on the "
          "same inputs. Until that exists, nothing here shows the architecture "
          "earns its size."),
-        ("It fails on hydrodynamic physics.",
+        ("It fails on hydrodynamic physics, for reasons not yet separated.",
          "On the one evaluation slice drawn from a full hydrodynamic simulation "
          "it scores worse than a constant predictor on six of eight parameters. "
-         "Section 04."),
+         "That slice also has a redshift-ordering defect, so the physics and the "
+         "defect are confounded and neither is measured."),
+        ("Two suites have their redshift channels reversed.",
+         "<code>camb_nl</code> and <code>camels_astrid_x</code> store z=0.47 "
+         "where every other suite stores z=0, which is 39 of the 6,000 bundled "
+         "test spectra. The demo warns when it sees this. Found in September "
+         "2026, after the model shipped."),
         ("Neutrino mass is confounded with baryonic feedback.",
          "The two suppress small-scale structure in a similar way over the "
          "scales this model reads, and nothing in the labels separates them."),
@@ -1785,15 +2182,16 @@ def _limits() -> str:
         "Stated in full, because a careful reader finds all of it within ten "
         "minutes anyway and it is better coming from me.")}
 <div class="sbody"><ol>{lis}</ol></div>
-</div></section>
+</div></section>"""
 
-<footer><div class="wrap">
-<p class="muted" style="margin:0 0 10px">CosmUFR is an active research programme
-by Aaditya Rajgor, released open under MIT. If you work on cosmological inference
-and any of the open questions above look answerable, I would like to hear from
-you.</p>
-<p>Code, benchmark and full report &middot; <a href="{REPO_URL}">{REPO_URL}</a><br>
-Weights and model card &middot; <a href="{HF_URL}">{HF_URL}</a></p>
+
+def _footer() -> str:
+    """Closes the page. The links and the ask live in the code section."""
+    return f"""<footer><div class="wrap">
+<p class="muted" style="margin:0 0 10px">CosmUFR &middot; Aaditya Rajgor &middot;
+released open under MIT. Every number on this page is measured, and the faults
+are listed before the results.</p>
+<p><a href="{REPO_URL}">{REPO_URL}</a> &middot; <a href="{HF_URL}">{HF_URL}</a></p>
 <p class="dim" style="margin-top:14px">Checkpoint sha256 {SHA256}</p>
 </div></footer>"""
 
@@ -1803,16 +2201,40 @@ Weights and model card &middot; <a href="{HF_URL}">{HF_URL}</a></p>
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _full(demo_inner: str = "", selected=None) -> str:
-    return (_hero()
-            + _audit()                                    # 01 the finding
-            + _fold(_idea(), _input_section())            # 02 what this is
-            + _demo(demo_inner, selected)                 # 03 run it
-            + _fold(_results(), _output_section())        # 04 accuracy
-            + _baseline()                                 # 05 is it earning it
-            + _ceiling()                                  # 06 what I got wrong
-            + _evolution()                                # 07 how it got here
-            + _roadmap()                                  # 08 where it goes
-            + _limits())                                  # 09 limitations
+    """
+    Five questions, in the order a stranger would ask them.
+
+    Everything that used to be a top-level section is still here; the ones that
+    are evidence rather than argument now sit inside the question they answer.
+    """
+    did = _chapter(
+        "01", "What we did", "Teach a network to run the physics backwards.",
+        "Working out which universe produced a measurement takes days of "
+        "compute. We tried to replace that with a network that has seen enough "
+        "simulated universes to recognise one on sight.",
+        _sub(_idea(), "The problem, and the bet"),
+        _sub(_input_section(), "What the model reads",
+             "Four hundred numbers go in. Everything the model will ever know "
+             "about a universe has to be in them."))
+
+    observed = _extend(
+        _audit(),
+        _sub(_evolution(), "Eight runs, and what each one taught"),
+        _sub(_results(), "How accurate it actually is"),
+        _sub(_baseline(), "Is the large model earning its size?"),
+        _sub(_ceiling(), "And our explanation for all of it was wrong"))
+
+    conclude = _chapter(
+        "03", "What we conclude", "A working baseline, and an untested idea.",
+        "The interesting claim has not been tested, because the mechanism that "
+        "would have tested it never ran. What exists is a fast, checkable, "
+        "openly flawed starting point.",
+        _conclusion(),
+        _sub(_roadmap(), "The longer plan, one constraint at a time"),
+        _sub(_limits(), "Everything known to be wrong with this"))
+
+    return (_hero() + did + observed + conclude
+            + _demo(demo_inner, selected) + _the_code() + _footer())
 
 
 def _err(msg: str, detail: str = "") -> str:
