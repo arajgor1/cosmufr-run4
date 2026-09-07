@@ -83,7 +83,22 @@ EXAMPLE_IDS = list(range(0, min(len(BENCH), 5400), 211))[:24]
 # log10 P(k) at z=0 across the benchmark. Used only to tell a visitor whether
 # the spectrum they uploaded resembles what the model was trained on, which is
 # the most useful thing available when there is no truth to score against.
+def _src_name(i: int) -> str:
+    return cosmufr.SOURCE_NAMES.get(int(BENCH.source_lid[i]), f"lid_{BENCH.source_lid[i]}")
+
+
+
 BENCH_LOGPK = np.log10(np.clip(BENCH.pk_z0, 1e-30, None))
+
+# The spectrum shown in the hero, and what the model actually returns for it.
+# Prefer a suite that varies all eight parameters: a fiducial universe reads as
+# placeholder text because w0 sits at -1.000 and mv at 0.000.
+HERO_ID = next((j for j in EXAMPLE_IDS if _src_name(j) == "bacco_full8"),
+               EXAMPLE_IDS[1] if len(EXAMPLE_IDS) > 1 else 0)
+_t0 = time.perf_counter()
+HERO_RESULT = cosmufr.infer(BENCH.pk_z0[HERO_ID], BENCH.pk_z047[HERO_ID],
+                            model=MODEL)
+HERO_MS = (time.perf_counter() - _t0) * 1000
 
 app = FastAPI(title="CosmUFR")
 
@@ -203,6 +218,7 @@ nav.top .wrap{display:flex; align-items:center; gap:24px; height:66px}
   letter-spacing:.08em}
 .hgrid .q{font-family:"Space Grotesk",sans-serif; font-size:14.5px; color:#fff;
   font-weight:500; margin-top:2px}
+.hgrid .t{font-family:var(--mono); font-size:9px; color:var(--dim); margin-top:3px}
 
 /* ── sections ────────────────────────────────────────────────────────── */
 section{padding:104px 0; border-bottom:1px solid var(--hair); position:relative}
@@ -593,14 +609,15 @@ def _page(body: str, title: str = "CosmUFR — cosmology from a power spectrum")
 
 def _hero_visual() -> str:
     """
-    The two input curves and the eight numbers they turn into, drawn from a real
-    benchmark spectrum rather than mocked up. It is the whole product in one
-    picture: a measurement on the left, a cosmology on the right.
+    The two input curves and the eight numbers the model returns for them, run
+    on a real benchmark spectrum at import.
+
+    The true values sit underneath the predictions on purpose. An earlier version
+    of this panel printed the truth alone under a caption reading "Output", which
+    is the answer key dressed as a result, on a page whose whole claim is that it
+    does not do that.
     """
-    # Prefer a suite that varies all eight parameters: a fiducial universe
-    # shows w0 = -1.000 and mv = 0.000 and reads as placeholder text.
-    i = next((j for j in EXAMPLE_IDS if _src_name(j) == "bacco_full8"),
-             EXAMPLE_IDS[1] if len(EXAMPLE_IDS) > 1 else 0)
+    i = HERO_ID
     lk = np.log10(K_GRID)
     a = np.log10(np.clip(BENCH.pk_z0[i], 1e-30, None))
     b = np.log10(np.clip(BENCH.pk_z047[i], 1e-30, None))
@@ -625,12 +642,13 @@ def _hero_visual() -> str:
                  f'<text x="{gx:.1f}" y="{H-PB+15}" fill="#666d79" font-size="9" '
                  f'font-family="ui-monospace,monospace" text-anchor="middle">{kv:g}</text>')
 
-    p = BENCH.params[i]
+    pred = HERO_RESULT.params_array
+    true = BENCH.params[i]
+    fmt = lambda l, v: f"{v:+.3f}" if l in ("w0", "wa") else f"{v:.3f}"
     cells = "".join(
         f'<div><div class="p">{PARAM_TEX[l]}</div>'
-        f'<div class="q">{p[j]:+.3f}</div></div>' if l in ("w0", "wa") else
-        f'<div><div class="p">{PARAM_TEX[l]}</div>'
-        f'<div class="q">{p[j]:.3f}</div></div>'
+        f'<div class="q">{fmt(l, pred[j])}</div>'
+        f'<div class="t">true {fmt(l, true[j])}</div></div>'
         for j, l in enumerate(PARAM_LABELS))
 
     return f"""<div class="heroviz"><div class="frame">
@@ -650,7 +668,7 @@ def _hero_visual() -> str:
   <text x="{(PL+W-PR)/2:.0f}" y="{H-4}" fill="#666d79" font-size="9"
         font-family="ui-monospace,monospace" text-anchor="middle">k  [h/Mpc]</text>
 </svg>
-<div class="cap" style="margin:16px 0 0"><span>Output &middot; the cosmology that produced it</span><span>245 ms</span></div>
+<div class="cap" style="margin:16px 0 0"><span>Output &middot; what the model infers, against the truth</span><span>{HERO_MS:.0f} ms</span></div>
 <div class="hgrid">{cells}</div>
 </div></div>"""
 
@@ -672,7 +690,7 @@ model, on real held-out data, while you watch.</p>
   <a class="btn btn-g" href="#idea">What problem is this</a>
 </div>
 <div class="metrics">
-  <div><div class="v">245&thinsp;ms</div><div class="k">to infer, one CPU</div></div>
+  <div><div class="v">{HERO_MS:.0f}&thinsp;ms</div><div class="k">to infer, one CPU</div></div>
   <div><div class="v">8</div><div class="k">parameters out</div></div>
   <div><div class="v">84.5M</div><div class="k">training spectra</div></div>
   <div><div class="v">6,000</div><div class="k">checkable test cases</div></div>
@@ -813,7 +831,7 @@ the model recovered that parameter for that universe.</p></div>
 <div class="card"><div class="n">Read with care</div><h4>The &sigma; column</h4>
 <p>The model reports an uncertainty, and it is not trustworthy. It emits the same
 constant on every input, so it is flagged in the results table and should be
-ignored. Section 05 explains why.</p></div>
+ignored. Section 06 explains why.</p></div>
 <div class="card"><div class="n">Expect a spread</div><h4>Not all eight are equal</h4>
 <p>The spectrum constrains matter density and clumpiness strongly, expansion rate
 and dark energy weakly, and neutrino mass essentially not at all. That ordering
@@ -859,7 +877,7 @@ def _evolution() -> str:
         f'<td class="muted">{learned}</td></tr>'
         for name, changed, learned in RUNS)
     return f"""<section id="evolution"><div class="wrap">
-{_shead("06", "How it got here", "Four training runs, then a decision to stop training.",
+{_shead("07", "How it got here", "Four training runs, then a decision to stop training.",
         "The useful history is not a score table. It is what each run changed "
         "and what that taught, because the scores turned out to be less "
         "trustworthy than they looked.")}
@@ -896,7 +914,7 @@ def _roadmap() -> str:
     """
     cards = """<div class="step-row bad"><div class="sn">00</div><div class="sc"><div class="st-head"><h4>Make the architecture actually train</h4><span class="pill-bad">blocked, and first</span></div><p class="dim" style="margin:0 0 8px">the defect</p><p class="muted" style="margin:0">Not in the original plan. The audit put it here. The belief pipeline receives no gradient and the energy landscape is flat, so every rung above this one rests on a floor that is not there. Free to verify, and verifiable before any training spend.</p></div></div><div class="step-row ok"><div class="sn">01</div><div class="sc"><div class="st-head"><h4>A working inference path</h4><span class="pill-ok">done</span></div><p class="dim" style="margin:0 0 8px">shipped</p><p class="muted" style="margin:0">One observable, eight parameters, a single forward pass, and a benchmark anyone can check. This is the released model. It recovers matter density and clustering amplitude well and is honest about the rest.</p></div></div><div class="step-row next"><div class="sn">02</div><div class="sc"><div class="st-head"><h4>Physics-complete training</h4><span class="pill-next">next</span></div><p class="dim" style="margin:0 0 8px">the constraint: an incomplete physics manifold</p><p class="muted" style="margin:0">Remove the constraint that the training set is mostly gravity-only. Without gas, feedback and AGN physics in the manifold, an anomaly score cannot tell new physics apart from physics the model was simply never shown. CAMELS is the dataset for this: thousands of hydrodynamic simulations varying matter density, clustering and four feedback parameters.</p></div></div><div class="step-row later"><div class="sn">03</div><div class="sc"><div class="st-head"><h4>Dynamic parameter space</h4><span class="pill-later">designed</span></div><p class="dim" style="margin:0 0 8px">the constraint: a fixed output list</p><p class="muted" style="margin:0">Remove the constraint that the output is hardwired to eight neurons with compiled-in ranges. The belief state is parameter-agnostic: it encodes the structure of the spectrum, not a fixed list of answers. The read-out head should take a specification at runtime, so a researcher asks for the parameters they care about, including ones the model was never trained to name.</p></div></div><div class="step-row blocked"><div class="sn">3B</div><div class="sc"><div class="st-head"><h4>Full posteriors, not error bars</h4><span class="pill-blocked">blocked</span></div><p class="dim" style="margin:0 0 8px">the constraint: Gaussian uncertainty</p><p class="muted" style="margin:0">Remove the constraint that the answer is a mean and a width. A normalising flow over the belief state gives a real posterior, compatible with the chain-analysis tools cosmologists already use. Blocked, and honestly so: a flow trained against a model whose uncertainties are a clamp constant would faithfully learn to reproduce a constant.</p></div></div><div class="step-row later"><div class="sn">04</div><div class="sc"><div class="st-head"><h4>One belief, many telescopes</h4><span class="pill-later">designed</span></div><p class="dim" style="margin:0 0 8px">the constraint: one instrument at a time</p><p class="muted" style="margin:0">Remove the constraint of a single observable. Only the encoder is specific to the power spectrum; the belief state and everything downstream are domain-agnostic. Add an encoder for the microwave background, another for gravitational-wave distances, and the same belief is updated by each in turn. Three instruments, one inference, one joint constraint.</p></div></div><div class="step-row later"><div class="sn">05</div><div class="sc"><div class="st-head"><h4>Anomaly as a research direction</h4><span class="pill-later">architecturally present</span></div><p class="dim" style="margin:0 0 8px">the constraint: you must know what to look for</p><p class="muted" style="margin:0">Remove the constraint that you can only test hypotheses someone already thought of. If a real observation leaves the constraint energy elevated after settling, its gradient points at the direction in belief space that would explain the residual, and that direction projects back onto specific scales in the spectrum. Not a detection: a pointer at where to look. It would need validating on an injected synthetic signal long before anyone trusted it on sky data.</p></div></div>"""
     return f"""<section id="roadmap"><div class="wrap">
-{_shead("07", "Where it goes", "Each step removes one constraint.",
+{_shead("08", "Where it goes", "Each step removes one constraint.",
         "The ladder below is the design plan for the model. It is built on a "
         "method rather than an ambition: at every step, name the limitation a "
         "human put in, and take it out.")}
@@ -954,10 +972,6 @@ do not work. That is what the rest gets built on.</p>
 # one, upload it straight back, and confirm the answer matches. Nothing here is
 # special-cased for the built-ins: the upload path runs identical code.
 # ─────────────────────────────────────────────────────────────────────────────
-
-def _src_name(i: int) -> str:
-    return cosmufr.SOURCE_NAMES.get(int(BENCH.source_lid[i]), f"lid_{BENCH.source_lid[i]}")
-
 
 def _example_label(i: int) -> str:
     p = BENCH.params[i]
@@ -1308,9 +1322,13 @@ that parameter is written into the height of the curve, and you do not need a
 large network to read it. The network earns its keep on the parameters that are
 subtle or that the training data barely varies, where it has learned a prior
 ridge cannot get from three thousand rows.</p>
-<p class="dim">Both caveats favour ridge, which is fitted on rows from the same
-suites it is tested on while CosmUFR has never seen any of these spectra. This
-is a generous baseline, not a hostile one. Rerun it with
+<p class="dim">Read the asymmetry honestly. Ridge is fitted on 3,000 rows and
+CosmUFR trained on 84.5 million, so the network has a four-order-of-magnitude data
+advantage and still loses on matter density. Two smaller caveats run the other
+way: ridge is fitted on rows from the same suites it is tested on, while CosmUFR
+has never seen any of these spectra. The comparison it does not yet make, and the
+one that would settle the architecture, is a small network of matched size trained
+directly on the same 400 inputs. Rerun with
 <code>python scripts/ridge_baseline.py</code>.</p>
 </div></div></section>"""
 
@@ -1327,7 +1345,7 @@ def _audit() -> str:
                  f'<td class="{"bad-t" if bad else "good-t"}">'
                  f'{"never trained" if bad else "trained"}</td></tr>')
     return f"""<section id="audit"><div class="wrap">
-{_shead("05", "The audit", "I stress-tested my own model. It failed.",
+{_shead("06", "The audit", "I stress-tested my own model. It failed.",
         "Everything above is what the model does. This is what I found when I "
         "went looking for reasons not to trust it, and it is the reason the "
         "roadmap looks the way it does.")}
@@ -1348,9 +1366,10 @@ section 00 again, with each block coloured by what its weights actually show.</p
 <div class="diagram"><p class="cap">Inference path &middot; what the weights say</p>
 {architecture_svg(audit=True)}</div>
 
-<p class="muted">A <code>Linear</code> bias is initialised from a random draw, and
-any optimizer step moves it. Eighty-four of them are still bit-exactly
-<code>0.0</code> after forty epochs of training:</p>
+<p class="muted">Training zero-initialises every <code>Linear</code> bias, and the
+first nonzero gradient to reach one moves it off zero. Eighty-four of them are
+still bit-exactly <code>0.0</code> after forty epochs, so no gradient ever
+arrived:</p>
 <div class="panel tight"><div class="tw"><table>
 <tr><th>module</th><th></th><th class="num">biases = 0</th>
 <th class="num">max |bias|</th><th>verdict</th></tr>{rows}</table></div></div>
@@ -1419,7 +1438,7 @@ def _limits() -> str:
     ]
     lis = "".join(f"<li><strong>{t}</strong> {d}</li>" for t, d in items)
     return f"""<section id="limits"><div class="wrap">
-{_shead("08", "Limitations", "Everything known to be wrong with this.",
+{_shead("09", "Limitations", "Everything known to be wrong with this.",
         "Stated in full, because a careful reader finds all of it within ten "
         "minutes anyway and it is better coming from me.")}
 <div class="sbody"><ol>{lis}</ol></div>

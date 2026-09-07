@@ -47,6 +47,17 @@ SHORT = {"Om": "matter density", "s8": "lumpiness", "h": "expansion rate",
          "ns": "spectral tilt", "Ob": "ordinary matter", "w0": "dark energy",
          "mv": "neutrino mass", "wa": "dark energy drift"}
 
+# Values these parameters are held at when a suite does not vary them. Hitting
+# one is not a recovery: the model can score it perfectly by always guessing the
+# same number. Naming such a parameter as the run's best result is the pinned-
+# parameter mistake the accuracy section warns about, made in plain English.
+FIDUCIAL = {"w0": -1.0, "wa": 0.0, "mv": 0.0}
+
+
+def _pinned(label: str, truth_value: float) -> bool:
+    f = FIDUCIAL.get(label)
+    return f is not None and abs(truth_value - f) < 1e-6
+
 
 def read_settling(report) -> Reading:
     """What the settling panel means for this run."""
@@ -91,7 +102,7 @@ def read_settling(report) -> Reading:
                     "What this changes: the numbers above are not invalidated, "
                     "but they are not coming from the part of the design that "
                     "was supposed to produce them. They come from the final "
-                    "read-out step alone. Section 05 explains why."))
+                    "read-out step alone. Section 06 explains why."))
     else:
         out.append(("bottom",
                     f"The refinement is doing real work on this run: the "
@@ -103,7 +114,7 @@ def read_settling(report) -> Reading:
                     f"its range: that is the model changing its mind, which is "
                     f"what the architecture was built to do."))
         out.append(("body",
-                    "Note this contradicts the audit in section 05, which is "
+                    "Note this contradicts the audit in section 06, which is "
                     "measured on the released checkpoint. If you are seeing "
                     "this on the released weights, please report it."))
     return out
@@ -232,17 +243,31 @@ def read_parameters(params: np.ndarray, sigmas: np.ndarray,
                 for i, l in enumerate(PARAM_LABELS)}
         good = [l for l, v in frac.items() if v < 0.05]
         poor = [l for l, v in frac.items() if v > 0.10]
-        best = min(frac.items(), key=lambda kv: kv[1])
+        pinned = [l for i, l in enumerate(PARAM_LABELS) if _pinned(l, truth[i])]
+        # Score the run on the parameters this universe actually varies.
+        live = {l: v for l, v in frac.items() if l not in pinned}
+        best = min(live.items(), key=lambda kv: kv[1]) if live else None
 
         out.append(("bottom",
                     f"On this universe the model got {len(good)} of the 8 "
                     f"close, and {len(poor)} clearly wrong."))
-        out.append(("body",
-                    f"Because this example came from a simulation we know the "
-                    f"real answer, so the last column is a score rather than a "
-                    f"guess. It did best on {SHORT[best[0]]}, landing within "
-                    f"{best[1] * 100:.1f}% of the full range that quantity can "
-                    f"take."))
+        if best is not None:
+            out.append(("body",
+                        f"Because this example came from a simulation we know "
+                        f"the real answer, so the last column is a score rather "
+                        f"than a guess. It did best on {SHORT[best[0]]}, landing "
+                        f"within {best[1] * 100:.1f}% of the full range that "
+                        f"quantity can take."))
+        if pinned:
+            names = ", ".join(SHORT[l] for l in pinned[:-1])
+            names = (f"{names} and {SHORT[pinned[-1]]}" if len(pinned) > 1
+                     else SHORT[pinned[0]])
+            out.append(("body",
+                        f"Discount {names} on this run. This universe was built "
+                        f"with {'them' if len(pinned) > 1 else 'it'} held at the "
+                        f"default value, so the model can score perfectly by "
+                        f"always guessing the same number. A right answer here "
+                        f"is not evidence of anything."))
         if poor:
             # Short labels inside a list; the long descriptive phrases read as
             # a run-on when three of them are strung together.

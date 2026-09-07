@@ -87,9 +87,10 @@ flowchart LR
 ```
 
 **The belief-settling core that gives this architecture its name never received
-a gradient.** A `Linear` bias is initialised from a random draw and any
-optimizer step moves it. Eighty-four of them are still bit-exactly `0.0` after
-forty epochs. Verify in about seven seconds:
+a gradient.** Training zero-initialises every `Linear` bias, and the first
+nonzero gradient to reach one moves it off zero. Eighty-four of them are still
+bit-exactly `0.0` after forty epochs, so no gradient ever arrived. Verify in
+about seven seconds:
 
 ```python
 import cosmufr
@@ -218,7 +219,7 @@ thing end to end.
 
 ## Roadmap
 
-**Where it is today.** A working, audited baseline. 245 ms inference on a CPU,
+**Where it is today.** A working, audited baseline. Sub-second inference on one CPU core,
 bit-deterministic, trained on 84.5M spectra across 14 suites. Matter density and
 clustering amplitude at R² 0.98 to 0.99 on sound data. A 6,000-case benchmark
 and a linear baseline both published, including where the baseline wins.

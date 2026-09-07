@@ -31,7 +31,7 @@ pipeline_tag: tabular-regression
 | Inputs | `log10 P(k)`, 200 log-spaced k bins over k ∈ [0.1, 4.5] h/Mpc, at z = 0 and z = 0.47 |
 | Outputs | 8 cosmological parameters. Also 8 variances and a P(k) reconstruction, both of which are degenerate: see limitations 3 and 9. |
 | Precision | float32 |
-| Latency | ~400 ms per spectrum on CPU |
+| Latency | ~300 ms per spectrum on one CPU core, measured |
 | Determinism | Bit-identical across repeated calls |
 | Checkpoint | epoch 30, phase 4, trained 2026-04-14 |
 | License | MIT |
@@ -69,7 +69,7 @@ R² is a ratio against the variance of the truth, so on a slice where a paramete
 
 The aggregate understates performance on sound data and overstates it on defective data. Both are shown.
 
-All eleven sources, including the worst rows. Nothing is omitted.
+The eleven sources with more than a handful of rows, including the worst. Five further sources hold 62 rows between them and are too small to score.
 
 | Source | n | Ω_m | σ₈ | h | n_s | Ω_b | w₀ | Σm_ν | w_a |
 |---|---|---|---|---|---|---|---|---|---|
