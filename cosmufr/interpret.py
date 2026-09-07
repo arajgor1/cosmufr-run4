@@ -102,7 +102,7 @@ def read_settling(report) -> Reading:
                     "What this changes: the numbers above are not invalidated, "
                     "but they are not coming from the part of the design that "
                     "was supposed to produce them. They come from the final "
-                    "read-out step alone. Section 06 explains why."))
+                    "read-out step alone. Section 01 explains why."))
     else:
         out.append(("bottom",
                     f"The refinement is doing real work on this run: the "
@@ -114,7 +114,7 @@ def read_settling(report) -> Reading:
                     f"its range: that is the model changing its mind, which is "
                     f"what the architecture was built to do."))
         out.append(("body",
-                    "Note this contradicts the audit in section 06, which is "
+                    "Note this contradicts the audit in section 01, which is "
                     "measured on the released checkpoint. If you are seeing "
                     "this on the released weights, please report it."))
     return out
