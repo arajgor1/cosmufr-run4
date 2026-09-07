@@ -1,104 +1,111 @@
 # CosmUFR
 
-**From a sky measurement to a cosmology, in a quarter of a second.**
-
-CosmUFR reads the matter power spectrum at two redshifts and returns eight
-cosmological parameters in a single forward pass. No simulator in the loop, no
-likelihood, no chain to converge.
+**A model that reads a matter power spectrum and returns eight cosmological
+parameters — and the audit that found its central mechanism never trained.**
 
 > **Live demo:** https://aadityarajgor27--cosmufr-demo-serve.modal.run
 > **Weights:** https://huggingface.co/arajgor1/cosmufr-run4
 
----
-
-## Why this exists
-
-A telescope survey measures where hundreds of millions of galaxies are. Turning
-that into a statement about the universe means running the physics backwards,
-and that inversion is the slow part.
-
-The conventional route is guess, simulate, compare, repeat. Hundreds of
-thousands of times, until the guesses converge. It is reliable and it costs
-CPU-days to CPU-weeks per analysis.
-
-The alternative this project tests: train a network on millions of simulated
-universes until it learns the inverse directly, then a new measurement is one
-forward pass. If that works, analyses currently priced out by compute become
-routine.
-
-This release is an early, working, and openly flawed attempt at that. Everything
-below is measured rather than claimed, the test data ships with the code, and
-the parts that do not work are named.
+Everything below is measured with the released package. The test set ships in
+this repository, so every number regenerates on your machine without asking
+anyone for anything.
 
 ---
 
-## How it works
+## Install and run
 
-```mermaid
-flowchart LR
-  A["P(k) at z=0<br/><small>200 values</small>"] --> E
-  B["P(k) at z=0.47<br/><small>200 values</small>"] --> E
-  E["ObsEncoder<br/><small>400 → 1024</small>"] --> P["BeliefProposal<br/><small>the first guess</small>"]
-  P --> S["SettlingCore<br/><small>16 refinement steps</small>"]
-  N["Energy heads<br/><small>define the landscape</small>"] --> S
-  S -->|"b*"| H1["ParameterHead"]
-  S --> H2["UncertaintyHead"]
-  S --> H3["GenerativeHead"]
-  H1 --> O["Cosmology<br/><small>Ωm σ8 h ns Ωb w0 mν wa</small>"]
-
-  classDef io fill:#0d1b2e,stroke:#60a5fa,color:#e8eaee
-  classDef core fill:#141418,stroke:#8a91a0,color:#e8eaee
-  class A,B,O io
-  class E,P,S,N,H1,H2,H3 core
+```bash
+git clone https://github.com/arajgor1/cosmufr-run4
+cd cosmufr-run4
+pip install -e ".[demo]"
 ```
-
-Four hundred numbers go in. The encoder turns them into a 1024-dimensional
-"belief" about which universe this is, sixteen refinement steps are meant to
-sharpen that belief, and three read-out heads turn it into answers.
-
-That is the design. The next section is what the trained weights actually do.
-
----
-
-## The audit
-
-I stress-tested my own model. It failed.
-
-```mermaid
-flowchart LR
-  A["P(k) at z=0"] --> E
-  B["P(k) at z=0.47"] --> E
-  E["ObsEncoder<br/><small>never trained</small>"] --> P["BeliefProposal<br/><small>never trained</small>"]
-  P --> S["SettlingCore<br/><small>never trained</small>"]
-  N["Energy heads<br/><small>trained, went flat</small>"] --> S
-  S --> H1["ParameterHead<br/><small>trained, works</small>"]
-  S --> H2["UncertaintyHead<br/><small>stuck at its floor</small>"]
-  S --> H3["GenerativeHead<br/><small>returns a constant</small>"]
-  H1 --> O["Cosmology"]
-
-  classDef io fill:#0d1b2e,stroke:#60a5fa,color:#e8eaee
-  classDef dead fill:#2a1410,stroke:#E2643B,color:#f0d6cd
-  classDef degen fill:#2a2110,stroke:#E6A23C,color:#f0e6cd
-  classDef ok fill:#0e241c,stroke:#3FBF8F,color:#d6f0e6
-  class A,B io
-  class E,P,S dead
-  class N,H2,H3 degen
-  class H1,O ok
-```
-
-**The belief-settling core that gives this architecture its name never received
-a gradient.** Training zero-initialises every `Linear` bias, and the first
-nonzero gradient to reach one moves it off zero. Eighty-four of them are still
-bit-exactly `0.0` after forty epochs, so no gradient ever arrived. Verify in
-about seven seconds:
 
 ```python
 import cosmufr
-print(cosmufr.weight_audit(cosmufr.load_model()).table())
+
+model  = cosmufr.load_model()        # pulls best.pt from HuggingFace, 545 MB
+bench  = cosmufr.load_benchmark()    # 6,000 held-out spectra, ships here
+result = cosmufr.infer(bench.pk_z0[0], bench.pk_z047[0], model=model)
+
+print(result.params)                 # {'Om': 0.387, 's8': 0.672, ...}
 ```
 
-The cause is visible in released source, no checkpoint needed.
-`SettlingCore.forward` detaches the belief on entry to every step:
+Inputs are `P(k)` on 200 log-spaced bins over k ∈ [0.1, 4.5] h/Mpc, at z=0 and
+z=0.47, in (Mpc/h)³. Raw `P(k)` or `log10 P(k)` are both accepted.
+
+```bash
+python -m cosmufr.reproduce          # regenerates every table below
+python -c "import cosmufr; print(cosmufr.weight_audit(cosmufr.load_model()).table())"
+```
+
+Two things the API will not do quietly: `result.sigmas` is a clamp floor and not
+an error bar, and `result.pk_recon` is a constant and not a reconstruction. Both
+are defects, listed at the end.
+
+[`examples/01_quickstart.ipynb`](examples/01_quickstart.ipynb) walks the whole
+thing end to end.
+
+---
+
+## 1 · What we did
+
+**The problem.** Turning a sky survey into a statement about the universe means
+running the physics backwards. The conventional route guesses a cosmology,
+simulates it, compares, and repeats a few hundred thousand times. It works, and
+it costs CPU-days per analysis.
+
+**The bet.** Train a network on enough simulated universes that it recognises one
+on sight, and the inversion becomes a single forward pass. If that holds,
+analyses currently priced out by compute become routine.
+
+**The design, and why.** Rather than answering in one shot, the model was built
+to arrive gradually: read the spectrum into a 1024-dimensional "belief" about
+which universe this is, sharpen that belief over sixteen steps by rolling
+downhill on a score the model learns for itself, then read eight parameters off
+the settled belief. The reason for the extra machinery is that a single-pass
+estimator has to commit immediately, while a model that refines can in principle
+spend more effort on a hard observation than an easy one. That is the research
+claim, and it is the claim this release does not get to test.
+
+**What it learned from.** 84.5M spectra across fourteen suites — BACCO, SP(k),
+BCemu, DarkEmulator, CAMB, and CAMELS IllustrisTNG and SIMBA. Almost all of it is
+emulator output: smooth fitted functions, not simulations. About 6,000 rows come
+from full hydrodynamic simulations, which is 0.007% of the corpus.
+
+**What we ran.** Four full training runs, then four more architectural variants
+during an investigation into why six of the eight parameters would not improve.
+Eight runs in total.
+
+---
+
+## 2 · What we observed
+
+### The design did not survive its own weights
+
+We opened the finished checkpoint and checked, part by part, what had actually
+changed. There are three outcomes, not two:
+
+| outcome | share | which parts |
+|---|---|---|
+| **Never trained.** No gradient reached these at any point, in any of the eight runs. They hold their initial random values. A line of code disconnected them from what was being optimised, so more training could not have moved them. | 24% | `obs_encoder` reads the spectrum · `belief_proposal` forms the first guess · `settling` refines it sixteen times · `halo_head` unused side output |
+| **Trained, and went somewhere useless.** These received a gradient and changed. They converged on answers that ignore the input. | 56% | the three scoring heads return the same value for wildly different spectra · `gen_head` returns one number at every scale · `unc_head` sits on its clamp floor |
+| **Trained, and works.** Every number the model reports comes from here, reading a fixed random projection of the input. | 1.2% | `param_head` |
+
+The remaining 19% is an unused single-redshift copy of the reading and guessing
+stages, plus a bank of stored reference states. Both trained. Neither affects an
+answer.
+
+**So both of these are true**, and stating only one of them is how this stayed
+confusing for months: training ran and moved most of the model, *and* the three
+parts the whole design rests on never moved at all.
+
+**How we know.** Training zero-initialises every `Linear` bias, and the first
+gradient to reach one moves it off zero; 84 are still bit-exactly `0.0` after
+forty epochs. Independently: diffing the finished weights against a checkpoint
+thirty-five epochs earlier, all 204 tensors in those three modules are identical
+to the last digit, while the read-out layers moved 66 to 79 percent.
+
+**Why.** One line in released source, no checkpoint needed:
 
 ```python
 for step in range(k):
@@ -110,24 +117,43 @@ for step in range(k):
     b = b - eta * P * grad.detach()
 ```
 
-**And a second cause, which is worse.** The energy heads *did* train, through
-their own optimizer, and converged on a constant. Energy varies by about one
-part in seven million across completely different spectra, and its gradient has
-norm 0.11 against a belief of norm 16.5. Repairing the gradient path alone would
-not make settling work: there would still be no landscape to descend. That is a
-harder problem than the one I first reported, and I do not have a fix for it.
+**And reconnecting it would not be enough.** The refinement was meant to work by
+rolling downhill on a score. The scoring heads did train, and converged on a
+landscape that is flat: the score varies by about one part in seven million
+across completely different spectra, its slope has norm 0.11 against a belief of
+norm 16.5, and sixteen steps could move the belief half a percent at most,
+whatever the input. So there are two faults, not one. The first is a small change
+we can verify before spending anything on training. The second is a research
+problem.
 
-Independently confirmed by diffing Run 2's checkpoint against Run 4's, forty
-epochs apart: 204 of 204 tensors in those three modules are bit-identical, while
-the read-out heads moved 66 to 79 percent.
+### How accurate it actually is
 
----
+Typical error on 162,795 held-out spectra, measured where each parameter varies,
+against what a published survey achieves on the same quantity:
 
-## Results
+| parameter | this model | published | from |
+|---|---|---|---|
+| Ω_m | 0.027 | 0.007 | Planck 2018 |
+| σ₈ | 0.028 | 0.006 | Planck 2018 |
+| h | 0.041 | 0.005 | Planck 2018 |
+| n_s | 0.021 | 0.004 | Planck 2018 |
+| Ω_b | 0.0046 | 0.0006 | Planck 2018 |
+| w₀ | 0.058 | 0.055 | DESI DR2 + CMB + SN |
+| Σm_ν | 0.115 eV | 0.020 eV | DESI DR2 + CMB |
+| w_a | 0.158 | 0.2 | DESI DR2 + CMB + SN |
 
-Measured with the released package on a deterministic split of 162,795 held-out
-spectra across 16 simulation suites. Full report in
-[`reports/honest_eval.json`](reports/honest_eval.json).
+Four to eight times worse than a real survey on everything the CMB constrains
+well. The error on neutrino mass is larger than the entire range that parameter
+is currently allowed to occupy. The error on h is about 70% of the whole Hubble
+tension, so the model cannot speak to that question at all. Every row is generous
+to this model: a survey constraint is a marginalised posterior on noisy sky data
+with a covariance, and this is point-estimate scatter on noiseless emulator
+spectra with no window, no shot noise and no galaxy bias. That matters most for
+the two dark-energy rows, which look competitive and are not.
+
+The same result as R², which is what earlier material about this project led
+with. R² is a ratio against the spread of the truth in whatever slice you
+sampled, so widening a prior raises it without changing the model:
 
 | Parameter | All test data | Where it varies | Bundled benchmark | Verdict |
 |---|---|---|---|---|
@@ -140,31 +166,19 @@ spectra across 16 simulation suites. Full report in
 | w_a | 0.165 | **0.185** | 0.148 | weak |
 | Σm_ν | 0.407 | **0.011** | 0.410 | not recovered |
 
-**Read the second column.** R² measures how much of the spread in the truth the
-model explains. On data where a parameter is held at a fixed value there is no
-spread, so the score is meaningless. "Where it varies" restricts each parameter
-to the data that actually varies it. For neutrino mass that is the whole story:
-it looks competent at 0.41 and is 0.011 once measured honestly.
+**Read the second column.** On data where a parameter is held fixed there is no
+spread, so the ratio is meaningless. For neutrino mass that is the whole story:
+0.41 on all data, 0.011 once measured honestly.
 
-**What reproduces.** The bundled 6,000-case benchmark ships in this repository
-and regenerates its own column to about 1e-6 on any machine. The full-test
-column came from a private split and cannot be checked from outside. The
-benchmark lands within about 0.03 of it and narrows that gap rather than closing
-it.
+**What reproduces.** The bundled 6,000-case benchmark ships here and regenerates
+its own column to about 1e-6 on any machine. The full-test column came from a
+private split and cannot be checked from outside; the benchmark lands within
+about 0.03 of it and narrows that gap rather than closing it.
 
-**Why the headline is lower than the model deserves.** One suite,
-`bacco_multiz`, is 15 percent of the test set and scores zero on everything,
-because its two redshift channels are identical copies and carry no growth
-information. That is a data-generation defect. On suites with sound data, matter
-density comes back at 0.98 to 0.99.
+### Is the large model earning its size?
 
----
-
-## Baseline
-
-The first question anyone should ask about a 136M-parameter network is whether
-something simple does just as well. Ridge regression on the same 400 inputs, fit
-on half the benchmark, both models scored on the same held-out half:
+Ridge regression on the same 400 inputs, fit on half the benchmark, both scored
+on the same held-out half:
 
 | Parameter | Ridge, 400 features | CosmUFR, 136M | Winner |
 |---|---|---|---|
@@ -177,90 +191,154 @@ on half the benchmark, both models scored on the same held-out half:
 | Σm_ν | 0.242 | **0.423** | cosmufr |
 | w_a | 0.018 | **0.170** | cosmufr |
 
-CosmUFR is ahead on seven of eight. A plain linear fit beats it on matter
-density, which is a real and slightly uncomfortable result: that parameter is
-written into the height of the curve and you do not need a large network to read
-it. The network earns its keep on parameters that are subtle or that the
-training data barely varies.
-
-Both caveats favour ridge, which is fit on rows from the same suites it is
-tested on while CosmUFR has never seen any of these spectra. Rerun with
+CosmUFR is ahead on seven of eight and loses on matter density, which is written
+into the height of the curve and does not need a large network to read. Read the
+asymmetry honestly: ridge is fitted on 3,000 rows and CosmUFR trained on 84.5
+million, a four-order-of-magnitude advantage, and it still loses that row. The
+comparison this does not make, and the one that would settle the architecture, is
+a network of matched size trained directly on the same inputs. Rerun with
 `python scripts/ridge_baseline.py`.
 
+### Where it breaks
+
+On `camels_astrid_x`, the one evaluation slice from a full hydrodynamic
+simulation, the model scores worse than a constant predictor on six of eight
+parameters, including −5.08 on h. **That result is confounded, and we say so.**
+That suite also stores its two redshift channels in the opposite order to every
+other suite, so it differs from the corpus in two ways at once. Swapping the rows
+back does not rescue the scores, and the other reversed suite scores normally,
+which points at the gas physics rather than the ordering — but pointing is not
+measuring. Separating them needs a rerun with the ordering corrected.
+
+**The neutrino number is really a baryon number.** Two suites carry the same
+spread of neutrino masses and differ only in whether a baryonic correction is
+applied: R² 0.516 without it, −1.343 with it, and the typical error more than
+doubles. Massive neutrinos suppress small-scale structure by streaming out of it;
+feedback suppresses it by pushing gas out of it. Over these scales the two look
+alike, and nothing in the eight output slots distinguishes them.
+
+**One suite is a data defect.** `bacco_multiz` is 15% of the test set and scores
+zero on everything, because its two redshift channels are byte-identical copies
+and carry no growth information.
+
+### And our explanation for all of it was wrong
+
+Earlier material claimed a Fisher information ceiling of 0.49 and said the model
+had reached it, so the limit lay in the observable rather than in the
+architecture. **That claim is withdrawn.** Two objections, either fatal on its
+own.
+
+*The arithmetic.* Substituting the reported scores into the same weights gives
+0.559, above the claimed bound — and all eight parameters individually exceed
+their own claimed maximum. A limit every one of your measurements violates is not
+a limit.
+
+*The concept.* A Fisher forecast needs a data covariance: a survey volume, a
+shot-noise term, a binning. Every row here is a noiseless emulator evaluation, so
+the covariance is zero, the information is unbounded, and no such ceiling can
+exist. A score short of perfect on noiseless data is a limit of the estimator,
+never of the information. What the calculation actually was is a weighted average
+of our own scores, with weights we chose, recovering the number the model had
+already scored.
+
+### And the run-to-run comparisons were noise
+
+Epoch-to-epoch R² varied by ±0.03 to 0.10, larger than nearly every difference
+that drove five months of decisions. There is no per-run score table in this
+repository for that reason.
+
 ---
 
-## Quick start
+## 3 · What we conclude
 
-```bash
-git clone https://github.com/arajgor1/cosmufr-run4
-cd cosmufr-run4
-pip install -e ".[demo]"
-python -m cosmufr.reproduce          # downloads weights, regenerates the tables
-```
+**The architecture this project set out to test has not been tested.** The
+mechanism that makes it interesting never ran, so nothing here is evidence for or
+against the idea. What exists is a fast, honest, checkable baseline.
 
-```python
-import cosmufr
+**What it can do today.** Return eight parameters in about a third of a second on
+one CPU core, with no simulator and no chain. Recover matter density and
+clustering amplitude to roughly four times worse than a survey but the right
+shape. Regenerate every published number from a benchmark that ships with the
+code. Report its own faults on every run.
 
-model  = cosmufr.load_model()        # pulls best.pt from HuggingFace
-bench  = cosmufr.load_benchmark()    # 6,000 held-out spectra, ships in this repo
-result = cosmufr.infer(bench.pk_z0[0], bench.pk_z047[0], model=model)
+**What it cannot do.** Give you an uncertainty. Touch real survey data — the
+input is a clean simulated spectrum, and a measured one arrives with a window,
+shot noise, a mask and galaxy bias, none of which this has ever seen. Handle gas
+physics. Separate neutrino mass from feedback. Support any claim about the
+architecture.
 
-print(result.params)                 # {'Om': 0.387, 's8': 0.672, ...}
-# result.sigmas   is the clamp floor on every input. Not an error bar.
-# result.pk_recon is a constant, not a reconstruction. See defect 4.
-```
+**What has to happen next, in order.**
 
-Inputs are `P(k)` on 200 log-spaced bins over k ∈ [0.1, 4.5] h/Mpc, at z=0 and
-z=0.47, in (Mpc/h)³. Raw `P(k)` or `log10 P(k)` are both accepted.
-[`examples/01_quickstart.ipynb`](examples/01_quickstart.ipynb) walks the whole
-thing end to end.
+1. **Reconnect the refinement.** A small code change, guarded by a test that
+   already ships here. Free, and verifiable before any training spend.
+2. **Give the scoring heads something to score.** The harder one. Without it the
+   reconnection buys nothing, because there is still no landscape to descend.
+3. **Produce a real uncertainty**, and check it the way the field checks one:
+   does the stated interval contain the truth as often as it claims?
+4. **Rebalance the corpus.** The parameters recovered worst are the ones it
+   barely varies — dark energy sits at its fiducial value in 86% of rows.
+5. **Then one training run**, with a pass mark written down before it starts
+   rather than after.
 
----
+**What this is aimed at.** A survey measurement interpretable in seconds rather
+than weeks, with an uncertainty you can defend to a referee. Get there and the
+analyses nobody runs today because they cost too much become ordinary. Nothing
+here is at that point, and the honest thing to say about the list above is that
+the second item is a research problem rather than a task.
 
-## Roadmap
-
-**Where it is today.** A working, audited baseline. Sub-second inference on one CPU core,
-bit-deterministic, trained on 84.5M spectra across 14 suites. Matter density and
-clustering amplitude at R² 0.98 to 0.99 on sound data. A 6,000-case benchmark
-and a linear baseline both published, including where the baseline wins.
-
-**Next.** Repair the severed gradient path, guarded by the unit test
-that would have caught it originally, which is free and verifiable before any
-training spend. Then the harder one: fix the flat energy landscape. Give the
-uncertainty head a floor it can leave. Rebalance a corpus that pins dark energy
-at its fiducial value in 86 percent of samples. Then one pre-registered training
-run with a pass/fail threshold set in advance.
-
-**Open questions I want advice on.** Is iterative belief refinement worth
-pursuing at all once the gradient path works, or does an amortized posterior
-estimator get there in one pass? How much of the weakness in h, w₀ and w_a is a
-real information limit of `P(k)` and how much is training coverage? Would higher
-k, more redshifts, or explicit acoustic-scale features make h identifiable?
+**Open questions I want an outside view on.** Is gradual refinement worth
+pursuing at all once the fault is repaired, or does a single-pass estimator reach
+the same place? How much of the weakness on h, w₀ and w_a is a real information
+limit of `P(k)` rather than training coverage? Would lower k_min, more redshifts,
+or explicit acoustic-scale features make h identifiable?
 
 ---
 
 ## Limitations
 
+Stated in full, because a careful reader finds all of it within ten minutes
+anyway and it is better coming from me.
+
 1. **The belief pipeline never trained.** Encoder, belief proposal and settling
    core sit at initialization.
-2. **The energy landscape is flat.** The energy heads collapsed to an
-   input-independent constant, so there is nothing to descend.
+2. **The energy landscape is flat.** The scoring heads collapsed to an
+   input-independent constant, so there is nothing to descend, and reconnecting
+   the gradient path alone would not change that.
 3. **Reported uncertainties are meaningless.** σ = 0.1 for six of eight
    parameters on every input. Do not use them.
 4. **The P(k) reconstruction is a constant.** The generative head returns the
    same value at every scale, for every input, and for a random belief vector.
    Its reported MSE of 0.687 is the variance of `log10 P(k)` about a constant.
-5. **Neutrino mass is not recovered.** R² = 0.011 where it varies.
-6. **The anomaly score is not usable.** The energy subsystem diverged; `E_con`
-   sits around −4.6e5, five orders of magnitude from the value quoted in earlier
-   material.
-7. **Two redshifts only.** Multi-redshift generalization is unvalidated and that
-   corpus has a documented ordering defect.
-8. **The headline table is not externally reproducible.** It was measured on a
-   private split; the bundled benchmark narrows that gap to about 0.03.
-9. **No ablation.** There is a linear baseline but no ablation of the
-   architecture's own components.
-10. **Historical cross-run comparisons in this project are untrustworthy**,
+5. **Neutrino mass is not recovered**, and is confounded with baryonic feedback.
+   R² = 0.011 where it varies, and it swings from 0.516 to −1.343 between two
+   suites that differ only in whether a baryonic correction is applied.
+6. **It fails on hydrodynamic physics, for reasons not yet separated.** On the
+   one evaluation slice from a full hydrodynamic simulation it scores worse than
+   a constant predictor on six of eight parameters. That slice also has a
+   redshift-ordering defect, so the physics and the defect are confounded and
+   neither is measured.
+7. **Two suites have their redshift channels reversed.** `camb_nl` and
+   `camels_astrid_x` store z=0.47 where every other suite stores z=0, which is 39
+   of the 6,000 bundled test spectra. The demo warns when it sees this. Found in
+   September 2026, after the model shipped.
+8. **The input is not an observable.** Emulator matter power spectra, with no
+   survey window, no shot noise, no mask and no galaxy bias. There is no path
+   from this to survey data that does not go through all four.
+9. **There is no noise model anywhere.** Every row is a deterministic emulator
+   evaluation, so there is no covariance, no likelihood, and nothing that would
+   make a posterior width a physical quantity.
+10. **The anomaly score is not usable.** The energy subsystem diverged; `E_con`
+    sits around −4.6e5, five orders of magnitude from the value quoted in earlier
+    material.
+11. **Two redshifts only.** Multi-redshift generalization is unvalidated and that
+    corpus has a documented ordering defect.
+12. **The headline table is not externally reproducible.** It was measured on a
+    private split; the bundled benchmark narrows that gap to about 0.03.
+13. **No ablation.** There is a linear baseline but no ablation of the
+    architecture's own components, and no network of matched size trained
+    directly on the same inputs. Until that exists, nothing here shows the
+    architecture earns its size.
+14. **Historical cross-run comparisons in this project are untrustworthy**,
     because epoch-to-epoch R² noise of ±0.03 to 0.10 was never controlled for.
 
 Earlier published figures for this model (Ω_m 0.907, σ₈ 0.911, h 0.604) are

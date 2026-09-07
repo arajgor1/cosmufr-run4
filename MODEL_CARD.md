@@ -17,9 +17,28 @@ pipeline_tag: tabular-regression
 - Code and reproduction: https://github.com/arajgor1/cosmufr-run4
 - Checkpoint SHA256: `5db09d4ff02316c60a43e08fa242223d3243f4f224b625798eaf385151150fc1`
 
-> **Read this first.** The belief-settling core that gives this architecture its name never received a gradient during training. It sits at initialization. What learned is the set of read-out heads, and of those only the parameter head does useful work: the uncertainty head is stuck at its clamp floor and the generative head returns a constant. Numbers below are measured on that basis and are reproducible from this repository. Earlier published figures for this model (Ω_m 0.907, σ₈ 0.911, h 0.604) are superseded and should not be cited.
+> **Read this first.** Three parts of this network never received a gradient
+> during training and still hold their initial random values; five more trained
+> and converged on outputs that ignore the input; one part trained and does all
+> the useful work. The table under "What we observed" says which is which.
+> Earlier published figures for this model (Ω_m 0.907, σ₈ 0.911, h 0.604) are
+> superseded and should not be cited.
 
 ---
+
+## What this is
+
+A network that maps `log10 P(k)` at two redshifts onto eight cosmological
+parameters in a single forward pass, with no simulator and no chain. It was
+designed to reach its answer gradually — encode the spectrum into a
+1024-dimensional belief, sharpen it over sixteen steps of descent on a learned
+score, then read parameters off the settled belief — on the reasoning that a
+model which refines can spend more effort on a hard observation than an easy one.
+That is the research claim this release does not get to test, for the reason
+below.
+
+Trained on 84.5M spectra across fourteen suites, almost all of it emulator
+output. Four training runs, then four architectural variants: eight in total.
 
 ## Model details
 
@@ -27,9 +46,9 @@ pipeline_tag: tabular-regression
 |---|---|
 | Developed by | Aaditya Rajgor |
 | Model type | Feed-forward energy-based parameter inference, no attention |
-| Parameters | 136,194,617 |
+| Parameters | 136,194,617, of which about 1.2% do the work |
 | Inputs | `log10 P(k)`, 200 log-spaced k bins over k ∈ [0.1, 4.5] h/Mpc, at z = 0 and z = 0.47 |
-| Outputs | 8 cosmological parameters. Also 8 variances and a P(k) reconstruction, both of which are degenerate: see limitations 3 and 9. |
+| Outputs | 8 cosmological parameters. Also 8 variances and a P(k) reconstruction, both degenerate: see limitations. |
 | Precision | float32 |
 | Latency | ~300 ms per spectrum on one CPU core, measured |
 | Determinism | Bit-identical across repeated calls |
@@ -38,15 +57,36 @@ pipeline_tag: tabular-regression
 
 Parameters, in output order: Ω_m, σ₈, h, n_s, Ω_b, w₀, Σm_ν, w_a.
 
+## What we observed
+
+Reading the finished weights part by part gives three outcomes, not two:
+
+| outcome | share | which parts |
+|---|---|---|
+| **Never trained.** No gradient reached these in any of the eight runs. A `detach()` in the settling loop disconnected them from the loss, so more training could not have moved them. | 24% | `obs_encoder`, `belief_proposal`, `settling`, `halo_head` |
+| **Trained, and went somewhere useless.** These received a gradient and converged on outputs that ignore the input. | 56% | the three energy heads, `gen_head`, `unc_head` |
+| **Trained, and works.** Every reported number comes from here, reading a fixed random projection of the input. | 1.2% | `param_head` |
+
+The rest is an unused single-redshift path plus a prototype bank. Verify in about
+seven seconds with `cosmufr.weight_audit(cosmufr.load_model()).table()`.
+
+**Reconnecting the gradient path would not be enough.** The energy heads trained
+and converged on a flat landscape: the score varies by about one part in seven
+million across completely different spectra, and its gradient has norm 0.11
+against a belief of norm 16.5. There is nothing to descend.
+
 ## Intended use
 
 Research and teaching. Specifically:
 
-- A worked example of energy-based iterative inference applied to cosmology.
-- A case study in how a silent gradient-path defect survives months of training with plausible-looking loss curves, and how to detect one.
-- A baseline that a better-trained model can be compared against.
+- A worked example of energy-based iterative inference applied to cosmology, and
+  of how such a design can fail silently while the loss curve looks healthy.
+- A fast, deterministic, reproducible baseline for `P(k)` → parameters.
+- A case study in auditing a trained checkpoint rather than trusting it.
 
-**Not for producing cosmological constraints.** The uncertainties are a constant, so nothing here supports error propagation or likelihood analysis.
+**Not** for producing cosmological constraints. The input is not an observable,
+there is no uncertainty, and the numbers are four to eight times worse than a
+published survey.
 
 ## Results
 
@@ -108,9 +148,28 @@ Be precise about what that reproduces. On a clean machine it regenerates the **b
 4. **Neutrino mass is not recovered** (R² = 0.011 where it varies).
 5. **The energy subsystem diverged.** Energy sits near −9.3e5 and its heads drifted ~7e29 in relative norm. The `E_con` anomaly score is around −4.6e5, five orders of magnitude from the −0.999908 quoted in earlier material. It is not a usable out-of-distribution signal.
 6. **Two redshifts only** (z = 0, z = 0.47). Multi-redshift generalization is unvalidated, and the multi-redshift corpus has a documented ordering defect.
-7. **No baseline and no ablation.** There is no comparison against an amortized posterior estimator or a plain MLP, which is the first thing a reviewer should ask for.
+7. **No ablation, and only a linear baseline.** Ridge regression on the same 400 inputs, fitted on 3,000 rows against this model's 84.5 million, still beats it on Ω_m (0.738 to 0.716). There is no comparison against an amortized posterior estimator, and no network of matched size trained directly on the same inputs. Until that exists, nothing here shows the architecture earns its size.
 8. **Historical cross-run comparisons in this project are untrustworthy**, because epoch-to-epoch R² noise of ±0.03 to 0.10 was never controlled for.
 9. **The generative head collapsed to a constant.** `GenerativeHead` is documented as reconstructing `log10 P(k)` at arbitrary k. It returns 2.6327 at every k, for every input spectrum, and for a random belief vector, with measured variation of 2e-7 in both directions. Its reported log-space MSE of 0.687 is simply the variance of `log10 P(k)` about a constant, which is what a predictor that ignores its input scores. There is no reconstruction.
+
+10. **It fails on hydrodynamic physics, for reasons not yet separated.** On `camels_astrid_x`, the one evaluation slice from a full hydrodynamic simulation, it scores worse than a constant predictor on six of eight parameters, including −5.08 on h. That slice also has a redshift-ordering defect (item 11), so the physics and the defect are confounded and neither is measured.
+11. **Two suites have their redshift channels reversed.** `camb_nl` and `camels_astrid_x` store z = 0.47 where every other suite stores z = 0 — 39 of the 6,000 bundled test spectra. The median log₁₀ gap between channels is about −0.32 in these and +0.32 everywhere else. Found September 2026, after the model shipped. The demo warns when it sees this.
+12. **Neutrino mass is confounded with baryonic feedback.** Two suites with the same spread of masses differ only in whether a baryonic correction is applied: R² 0.516 without it, −1.343 with it. Free-streaming suppression and feedback suppression look alike over these scales and nothing in the output distinguishes them.
+13. **The input is not an observable.** Emulator matter power spectra, with no survey window, no shot noise, no mask and no galaxy bias. There is no noise model anywhere in the corpus, so there is no covariance and nothing that would make a posterior width a physical quantity.
+14. **The "Fisher ceiling" claimed in earlier material is withdrawn.** Substituting the reported scores into the same weights gives 0.559 against a claimed maximum of 0.49, and all eight parameters individually exceed their own claimed maximum. Separately, a Fisher forecast requires a data covariance, and noiseless emulator rows have none, so no such bound can exist.
+
+## What you can conclude
+
+The architecture this model is named for has not been tested, because the
+mechanism never ran. Nothing here is evidence for or against iterative belief
+refinement.
+
+What it is, on its own terms: a fast, deterministic, fully reproducible baseline
+that recovers matter density and clustering amplitude usefully, is beaten by a
+linear fit on one of them, produces no uncertainty, and collapses on the one
+slice of real gas physics it is tested against. Use it as a baseline, a teaching
+example, or a starting point. Do not use it to constrain cosmology.
+
 
 ## Training data
 
