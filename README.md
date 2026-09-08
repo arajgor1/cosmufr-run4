@@ -88,7 +88,7 @@ changed. There are three outcomes, not two:
 | outcome | share | which parts |
 |---|---|---|
 | **Never trained.** No gradient reached these at any point, in any of the eight runs. They hold their initial random values. A line of code disconnected them from what was being optimised, so more training could not have moved them. | 24% | `obs_encoder` reads the spectrum · `belief_proposal` forms the first guess · `settling` refines it sixteen times · `halo_head` unused side output |
-| **Trained, and went somewhere useless.** These received a gradient and changed. They converged on answers that ignore the input. | 56% | the three scoring heads return the same value for wildly different spectra · `gen_head` returns one number at every scale · `unc_head` sits on its clamp floor |
+| **Trained, and stopped reading the input.** These received a gradient and changed. What they settled on does not depend on the spectrum. | 56% | the three scoring heads return the same value for wildly different spectra · `gen_head` returns one number at every scale · `unc_head` sits on its clamp floor |
 | **Trained, and works.** Every number the model reports comes from here, reading a fixed random projection of the input. | 1.2% | `param_head` |
 
 The remaining 19% is an unused single-redshift copy of the reading and guessing
@@ -139,7 +139,7 @@ against what a published survey achieves on the same quantity:
 | n_s | 0.021 | 0.004 | Planck 2018 |
 | Ω_b | 0.0046 | 0.0006 | Planck 2018 |
 | w₀ | 0.058 | 0.055 | DESI DR2 + CMB + SN |
-| Σm_ν | 0.115 eV | 0.020 eV | DESI DR2 + CMB |
+| Σm_ν | 0.115 eV | < 0.07 eV (95%) | DESI DR2 + CMB |
 | w_a | 0.158 | 0.2 | DESI DR2 + CMB + SN |
 
 Four to eight times worse than a real survey on everything the CMB constrains
@@ -202,8 +202,8 @@ a network of matched size trained directly on the same inputs. Rerun with
 ### Where it breaks
 
 On `camels_astrid_x`, the one evaluation slice from a full hydrodynamic
-simulation, the model scores worse than a constant predictor on six of eight
-parameters, including −5.08 on h. **That result is confounded, and I say so.**
+simulation, the model scores worse than a constant predictor on six of the
+seven parameters that suite varies, including −5.08 on h. **That result is confounded, and I say so.**
 That suite also stores its two redshift channels in the opposite order to every
 other suite, so it differs from the corpus in two ways at once. Swapping the rows
 back does not rescue the scores, and the other reversed suite scores normally,
@@ -314,7 +314,7 @@ anyway and it is better coming from me.
    suites that differ only in whether a baryonic correction is applied.
 6. **It fails on hydrodynamic physics, for reasons not yet separated.** On the
    one evaluation slice from a full hydrodynamic simulation it scores worse than
-   a constant predictor on six of eight parameters. That slice also has a
+   a constant predictor on six of the seven parameters it varies. That slice also has a
    redshift-ordering defect, so the physics and the defect are confounded and
    neither is measured.
 7. **Two suites have their redshift channels reversed.** `camb_nl` and

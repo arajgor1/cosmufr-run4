@@ -64,7 +64,7 @@ Reading the finished weights part by part gives three outcomes, not two:
 | outcome | share | which parts |
 |---|---|---|
 | **Never trained.** No gradient reached these in any of the eight runs. A `detach()` in the settling loop disconnected them from the loss, so more training could not have moved them. | 24% | `obs_encoder`, `belief_proposal`, `settling`, `halo_head` |
-| **Trained, and went somewhere useless.** These received a gradient and converged on outputs that ignore the input. | 56% | the three energy heads, `gen_head`, `unc_head` |
+| **Trained, and stopped reading the input.** These received a gradient and converged on outputs that do not depend on the spectrum. | 56% | the three energy heads, `gen_head`, `unc_head` |
 | **Trained, and works.** Every reported number comes from here, reading a fixed random projection of the input. | 1.2% | `param_head` |
 
 The rest is an unused single-redshift path plus a prototype bank. Verify in about
@@ -152,7 +152,7 @@ Be precise about what that reproduces. On a clean machine it regenerates the **b
 8. **Historical cross-run comparisons in this project are untrustworthy**, because epoch-to-epoch R² noise of ±0.03 to 0.10 was never controlled for.
 9. **The generative head collapsed to a constant.** `GenerativeHead` is documented as reconstructing `log10 P(k)` at arbitrary k. It returns 2.6327 at every k, for every input spectrum, and for a random belief vector, with measured variation of 2e-7 in both directions. Its reported log-space MSE of 0.687 is simply the variance of `log10 P(k)` about a constant, which is what a predictor that ignores its input scores. There is no reconstruction.
 
-10. **It fails on hydrodynamic physics, for reasons not yet separated.** On `camels_astrid_x`, the one evaluation slice from a full hydrodynamic simulation, it scores worse than a constant predictor on six of eight parameters, including −5.08 on h. That slice also has a redshift-ordering defect (item 11), so the physics and the defect are confounded and neither is measured.
+10. **It fails on hydrodynamic physics, for reasons not yet separated.** On `camels_astrid_x`, the one evaluation slice from a full hydrodynamic simulation, it scores worse than a constant predictor on six of the seven parameters that suite varies, including −5.08 on h. That slice also has a redshift-ordering defect (item 11), so the physics and the defect are confounded and neither is measured.
 11. **Two suites have their redshift channels reversed.** `camb_nl` and `camels_astrid_x` store z = 0.47 where every other suite stores z = 0 — 39 of the 6,000 bundled test spectra. The median log₁₀ gap between channels is about −0.32 in these and +0.32 everywhere else. Found September 2026, after the model shipped. The demo warns when it sees this.
 12. **Neutrino mass is confounded with baryonic feedback.** Two suites with the same spread of masses differ only in whether a baryonic correction is applied: R² 0.516 without it, −1.343 with it. Free-streaming suppression and feedback suppression look alike over these scales and nothing in the output distinguishes them.
 13. **The input is not an observable.** Emulator matter power spectra, with no survey window, no shot noise, no mask and no galaxy bias. There is no noise model anywhere in the corpus, so there is no covariance and nothing that would make a posterior width a physical quantity.

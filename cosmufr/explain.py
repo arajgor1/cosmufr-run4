@@ -44,11 +44,12 @@ FIGURE_NOTES = {
         "input": "The released checkpoint's weights, nothing else.",
         "output": "For each module, the fraction of its Linear layers whose "
                   "bias is still bit-exactly zero.",
-        "means": "PyTorch initialises a Linear bias from a random uniform "
-                 "draw, and any optimizer step moves it. A module whose biases "
-                 "are all still exactly 0.0 after forty epochs never received "
-                 "a gradient. Four modules are in that state, three of them "
-                 "the belief pipeline this architecture is named for.",
+        "means": "Training sets every Linear bias to exactly zero before it "
+                 "starts, and the first optimizer step to reach one moves it "
+                 "off zero. A module whose biases are all still bit-exactly "
+                 "0.0 after forty epochs never received a gradient. Four "
+                 "modules are in that state, three of them the belief "
+                 "pipeline this architecture is named for.",
         "why": "SettlingCore.forward detaches the belief at the start of every "
                "step, which severs everything upstream of it from the loss.",
     },

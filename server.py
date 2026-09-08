@@ -253,6 +253,8 @@ section{padding:104px 0; border-bottom:1px solid var(--hair); position:relative}
 .subhead{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr);
   gap:10px 46px; align-items:start; margin:56px 0 22px; padding-top:30px;
   border-top:1px solid var(--hair)}
+.subhead.plain{margin:44px 0 16px; padding-top:0; border-top:0}
+.subhead.plain h3{margin:0; font-size:21px}
 .subhead .fold{margin:0; padding-top:0; border-top:0}
 .subhead .sub-lede{margin:0; max-width:54ch; padding-top:5px}
 @media (max-width:980px){
@@ -426,6 +428,7 @@ h4.ch{margin:0 0 12px; font-family:var(--mono); font-size:10px; letter-spacing:.
 .vd li{margin-bottom:9px; font-size:13.5px; line-height:1.6; color:var(--mut)}
 .vd li:last-child{margin-bottom:0}
 .sub-lede{max-width:72ch; margin:-6px 0 20px; color:var(--mut)}
+.hashline{overflow-wrap:anywhere; word-break:break-all}
 
 /* ── the three outcomes ───────────────────────────────────────────────── */
 .outcomes{display:grid; gap:14px; margin:22px 0 26px}
@@ -883,8 +886,8 @@ survey data would need all of them, and that work does not exist yet.</p>
   <a class="btn btn-g" href="#demo">Run it on real data</a>
 </div>
 <div class="metrics">
-  <div><div class="v">204/204</div><div class="k">tensors never moved</div></div>
-  <div><div class="v">1.2%</div><div class="k">of the network trained</div></div>
+  <div><div class="v">{_share("untrained"):.0f}%</div><div class="k">never received a gradient</div></div>
+  <div><div class="v">{_share("works"):.1f}%</div><div class="k">produces every answer</div></div>
   <div><div class="v">0.027</div><div class="k">RMSE on matter density</div></div>
   <div><div class="v">6,000</div><div class="k">checkable test cases</div></div>
 </div>
@@ -930,11 +933,11 @@ once; using it costs one pass.</p></div>
 doing. Plus, honestly, which of those it does not yet get right.</p></div>
 </div>
 
-<h3 class="display" style="font-size:21px; margin:44px 0 6px">The path a spectrum takes</h3>
-<p class="muted" style="max-width:66ch; margin:0 0 6px">Four hundred numbers go in
-on the left. The encoder turns them into a 1024-dimensional "belief" about which
-universe this is, sixteen refinement steps are meant to sharpen that belief, and
-three read-out heads turn it into answers.</p>
+<div class="subhead plain"><h3 class="display">The path a spectrum takes</h3>
+<p class="muted sub-lede">Four hundred numbers go in on the left. The encoder
+turns them into a 1024-dimensional "belief" about which universe this is, sixteen
+refinement steps are meant to sharpen that belief, and three read-out heads turn
+it into answers.</p></div>
 <div class="diagram"><p class="cap">Inference path &middot; one forward pass</p>
 {architecture_svg()}</div>
 
@@ -966,9 +969,9 @@ def _input_section() -> str:
 <h4>Clumpiness, scale by scale</h4>
 <p>Matter is not spread evenly. The power spectrum says how much structure exists
 at each size: large scales on the left, small ones on the right. It falls to the
-right because the universe is smoother at large scales.</p></div>
+right because there is less power in each mode at small scales.</p></div>
 <div class="card"><div class="n">Why two of them</div>
-<h4>Now, and 4.7 billion years ago</h4>
+<h4>Now, and about five billion years ago</h4>
 <p>One curve at z=0 and one at z=0.47. Comparing them shows how fast structure
 grew, which is what separates parameters that would otherwise look identical
 from a single snapshot.</p></div>
@@ -986,12 +989,12 @@ grid is the contract: anything you feed the model has to be on it.</p></div>
 <span class="chip">units <b>(Mpc/h)&sup3;</b></span>
 </div>
 
-<h3 class="display" style="font-size:21px; margin:44px 0 10px">The examples in the demo</h3>
-<p class="muted" style="max-width:66ch">The dropdown is not a set of toy inputs.
-Each entry is the spectrum a published cosmology code produces for one specific
-set of parameters, held out of training, with those parameters recorded. The
-label shows the suite it came from and three of its true values, so you can see
-before you run it what the right answer is.</p>
+<div class="subhead plain"><h3 class="display">The examples in the demo</h3>
+<p class="muted sub-lede">The dropdown is not a set of toy inputs. Each entry is
+the spectrum a published cosmology code produces for one specific set of
+parameters, held out of training, with those parameters recorded. The label shows
+the suite it came from and three of its true values, so you can see before you
+run it what the right answer is.</p></div>
 <p class="dim" style="max-width:66ch">They are simulation output, not
 measurements. Nobody observes a matter power spectrum: a survey records where
 galaxies are, and the spectrum is inferred from that through a survey window, a
@@ -1060,13 +1063,13 @@ RUNS = [
      "The released checkpoint. Expansion rate improved most, and calibration hit "
      "a ceiling that later turned out to be the uncertainty head's clamp floor."),
     ("Runs 5&ndash;8",
-     "Seven architectural variants, chasing what looked like a hard ceiling.",
+     "Four more attempts at the architecture, chasing what looked like a hard ceiling.",
      "All of it inconclusive. The evaluation noise was larger than every effect "
      "being measured, so none of those experiments could have shown anything."),
     ("The audit",
      "Stopped training. Read the weights instead.",
      "The belief pipeline had never received a gradient, and the energy heads had "
-     "collapsed to a constant. The ceiling was a defect, not physics."),
+     "collapsed to a constant. Whatever the ceiling was, it was not the thing\n     I had argued it was."),
 ]
 
 
@@ -1122,10 +1125,9 @@ baseline: it recovers two of eight cosmological quantities usefully, is beaten b
 a linear fit on one of them, and collapses on the one slice of data drawn from
 real gas physics. That is a starting point with a clear next step, not a
 result.</p>
-<p class="muted" style="margin:0">The most useful output of the year is the
-audit, and the second most useful is the retraction below it. Both are about how
-easy it was to run eight training runs, watch the loss fall, and be wrong the
-whole time.</p>
+<p class="muted" style="margin:0">The audit and the retraction under it are
+both about the same thing: how easy it was to run eight training runs, watch the
+loss fall, and be wrong the whole time.</p>
 </div>
 
 <div class="verdicts">
@@ -1173,11 +1175,11 @@ whole time.</p>
   </div>
 </div>
 
-<h3 class="display" style="font-size:21px; margin:46px 0 14px">What I do not know how to fix</h3>
-<p class="muted" style="max-width:74ch">These are the questions this project
-cannot settle from the inside, and they are why it is published in this state
-rather than quietly retrained. Each one changes what the next training run should
-be, and I cannot tell which answer is right.</p>
+<div class="subhead plain"><h3 class="display">What I do not know how to fix</h3>
+<p class="muted sub-lede">These are the questions this project cannot settle from
+the inside, and they are why it is published in this state rather than quietly
+retrained. Each one changes what the next training run should be, and I cannot
+tell which answer is right.</p></div>
 
 <div class="opens">
   <div class="op">
@@ -1278,13 +1280,7 @@ yourself, and I would rather know which before spending on it.</li>
 </ul></div>
 
 <div class="panel accent" style="margin-top:22px">
-<p class="muted" style="margin:0 0 12px"><span class="lead-in">The goal all of
-this is aimed at.</span> A survey measurement should be interpretable in seconds
-rather than weeks, with an uncertainty you can defend. Get there and the
-analyses nobody runs today because they cost too much become ordinary: sweep an
-entire survey, re-run under every systematic, close the loop between an
-observation and a constraint inside one working session.</p>
-<p class="muted" style="margin:0">Nothing here is there yet. What exists is a
+<p class="muted" style="margin:0">Nothing on this list is done. What exists is a
 working inference path, a benchmark anyone can check, a baseline that says how
 much of the result is really the network, and a precise account of which parts
 do not work. That is what the rest gets built on.</p>
@@ -1593,7 +1589,7 @@ resolution steps &mdash; the smallest amounts the arithmetic can represent.</p>
 
 def _demo(inner: str = "", selected=None) -> str:
     return f"""<section id="demo"><div class="wrap">
-{_shead("04", "Try it yourself", "Run it yourself, right now.",
+{_shead("04", "Try it yourself", "Run the model on a spectrum.",
         "The released checkpoint, loaded in this container, running on whatever "
         "you give it. Nothing is cached and nothing is precomputed.")}
 <div class="sbody">{_form(selected)}{inner}</div>
@@ -1617,7 +1613,7 @@ BENCHMARK_ERR = {
     "ns": ("0.004", "Planck"),
     "Ob": ("0.0006", "Planck"),
     "w0": ("0.055", "DESI DR2 + CMB + SN"),
-    "mv": ("0.020 eV", "DESI DR2 + CMB"),
+    "mv": ("&lt; 0.07 eV (95%)", "DESI DR2 + CMB"),
     "wa": ("0.2", "DESI DR2 + CMB + SN"),
 }
 
@@ -1655,7 +1651,7 @@ def _results() -> str:
     for lbl in PARAM_LABELS:
         name, _ = PARAM_MEANING[lbl]
         v = vary[lbl]["r2"]
-        verdict = ("<span class='good-t'>recovered</span>" if v and v > 0.6 else
+        verdict = ("<span class='good-t'>recovered</span>" if v and v > 0.7 else
                    "<span class='flag'>partial</span>" if v and v > 0.25 else
                    "<span class='bad-t'>not recovered</span>")
         rows += (f'<tr><td>{PARAM_TEX[lbl]}</td>'
@@ -1772,7 +1768,7 @@ smooth fitted functions, fast to evaluate and free of gas physics. One slice of
 the evaluation, <code>camels_astrid_x</code>, is different: {a["n"]} spectra from
 a full hydrodynamic simulation, where gas cools, stars form and black holes push
 matter back out. <strong>The model scores worse than a constant predictor on six
-of the eight parameters there</strong>, including the {PARAM_MEANING[worst][0].lower()} at
+of the seven parameters this suite varies</strong>, including the {PARAM_MEANING[worst][0]} at
 R&sup2; {m[worst]["r2"]:.2f}.</p>
 <div class="panel tight"><div class="tw"><table>
 <tr><th>parameter</th><th class="num">R&sup2;</th><th class="num">typical error</th>
@@ -1877,21 +1873,21 @@ def _baseline() -> str:
 <div class="sbody">
 <p class="muted" style="max-width:66ch">Ridge regression on exactly the same 400
 input numbers, fitted on half the benchmark and scored on the other half.
-CosmUFR is scored on that same held-out half, so it is a fair fight.</p>
+CosmUFR is scored on that same held-out half.</p>
 <div class="panel"><div class="tw"><table>
 <tr><th>parameter</th><th></th><th class="num">ridge, 400 features</th>
 <th class="num">CosmUFR, 136M</th><th>winner</th></tr>{rows}</table></div></div>
 <p class="muted">CosmUFR is ahead on {wins} of {n}. A plain linear fit is
-competitive on matter density, which is a real and slightly uncomfortable result:
+competitive on matter density, and the reason is worth stating:
 that parameter is written into the height of the curve, and you do not need a
 large network to read it. The network earns its keep on the parameters that are
 subtle or that the training data barely varies, where it has learned a prior
 ridge cannot get from three thousand rows.</p>
-<p class="dim">Read the asymmetry honestly. Ridge is fitted on 3,000 rows and
+<p class="dim">The comparison is not symmetric. Ridge is fitted on 3,000 rows and
 CosmUFR trained on 84.5 million, so the network has a four-order-of-magnitude data
-advantage and still loses on matter density. Two smaller caveats run the other
-way: ridge is fitted on rows from the same suites it is tested on, while CosmUFR
-has never seen any of these spectra. The comparison it does not yet make, and the
+advantage and still loses on matter density. One caveat runs the other way:
+ridge is fitted on rows from the same suites it is tested on, while CosmUFR has
+never seen any of these spectra. The comparison it does not yet make, and the
 one that would settle the architecture, is a small network of matched size trained
 directly on the same 400 inputs. Rerun with
 <code>python scripts/ridge_baseline.py</code>.</p>
@@ -1927,13 +1923,13 @@ GROUP_COPY = {
         "training too little: a line of code disconnected them from the thing "
         "being optimised, so nothing was ever asking them to change."),
     "degenerate": (
-        "Trained, and went somewhere useless",
+        "Trained, and stopped reading the input",
         "warn",
-        "These did receive a gradient and did change. They settled on answers "
-        "that ignore the input. The three scoring heads return the same number "
-        "for wildly different spectra; the redraw head returns one value at every "
-        "scale; the confidence head sits on the smallest number it is allowed to "
-        "emit. Training worked on them. What it converged to is useless."),
+        "These did receive a gradient and did change. What they settled on does "
+        "not depend on the spectrum. The three scoring heads return the same "
+        "number for wildly different inputs, the redraw head returns one value "
+        "at every scale, and the confidence head sits on the smallest number it "
+        "is allowed to emit."),
     "works": (
         "Trained, and works",
         "good",
@@ -1953,6 +1949,11 @@ def _module_groups():
             group = "unused"
         out[group].append((name, job, MODULE_SHARE.get(name, 0.0)))
     return out
+
+
+def _share(group: str) -> float:
+    """What fraction of the parameters came out of training in one state."""
+    return sum(share for _, _, share in _module_groups()[group])
 
 
 def _outcome_table() -> str:
@@ -2162,7 +2163,7 @@ by a test, and the bad reasoning was found only by accident.</p>
 def _the_code() -> str:
     """Install it, run it, check it, get in touch."""
     return f"""<section id="the-code"><div class="wrap">
-{_shead("05", "The code", "Take it apart yourself.",
+{_shead("05", "The code", "Everything needed to check this.",
         "Everything on this page comes from a public repository and a public "
         "checkpoint. The test set ships with the code, so you can regenerate "
         "every number here without asking anyone for anything.")}
@@ -2220,12 +2221,11 @@ which parts of the network ever trained.</p>
 <tr><td>This page, running the real model</td>
     <td><a href="/">the demo above</a></td></tr>
 </table></div>
-<p class="dim" style="margin:12px 0 0">Checkpoint sha256 {SHA256}</p></div>
+<p class="dim hashline" style="margin:12px 0 0">Checkpoint sha256 {SHA256}</p></div>
 
 <div class="panel accent" style="margin-top:24px">
 <p class="muted" style="margin:0 0 10px"><span class="lead-in">Get in
-touch.</span> CosmUFR is an active research programme by Aaditya Rajgor,
-released open under MIT. The two questions I would most value an outside view on:
+touch.</span> CosmUFR is built and released by Aaditya Rajgor, open under MIT. The two questions I would most value an outside view on:
 whether gradual refinement is worth pursuing at all once the code fault is
 repaired, or whether a single-pass estimator reaches the same place; and how much
 of the weakness on the expansion rate is a real limit of this measurement rather
@@ -2266,7 +2266,7 @@ def _limits() -> str:
          "earns its size."),
         ("It fails on hydrodynamic physics, for reasons not yet separated.",
          "On the one evaluation slice drawn from a full hydrodynamic simulation "
-         "it scores worse than a constant predictor on six of eight parameters. "
+         "it scores worse than a constant predictor on six of the seven parameters that suite varies. "
          "That slice also has a redshift-ordering defect, so the physics and the "
          "defect are confounded and neither is measured."),
         ("Two suites have their redshift channels reversed.",
@@ -2302,7 +2302,7 @@ def _footer() -> str:
 released open under MIT. Every number on this page is measured, and the faults
 are listed before the results.</p>
 <p><a href="{REPO_URL}">{REPO_URL}</a> &middot; <a href="{HF_URL}">{HF_URL}</a></p>
-<p class="dim" style="margin-top:14px">Checkpoint sha256 {SHA256}</p>
+<p class="dim hashline" style="margin-top:14px">Checkpoint sha256 {SHA256}</p>
 </div></footer>"""
 
 
