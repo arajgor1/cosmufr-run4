@@ -239,13 +239,28 @@ section{padding:104px 0; border-bottom:1px solid var(--hair); position:relative}
   padding-top:30px; border-top:1px solid var(--hair); letter-spacing:-.015em}
 .lede.caveat{font-size:14.5px; color:var(--mut); border-left:2px solid var(--warn);
   padding-left:16px; margin-top:20px}
-.shead{display:grid; grid-template-columns:88px 1fr; gap:26px; margin-bottom:44px}
+.shead{display:grid; grid-template-columns:88px minmax(0,1.12fr) minmax(0,1fr);
+  gap:26px 46px; margin-bottom:48px; align-items:start}
 .shead .num{font-family:var(--mono); font-size:12px; color:var(--accent);
   letter-spacing:.1em; padding-top:9px}
 .shead .cat{font-family:var(--mono); font-size:10.5px; letter-spacing:.21em;
   text-transform:uppercase; color:var(--dim); margin:0 0 13px}
 .shead h2{font-size:clamp(27px,3.9vw,44px); margin:0 0 16px; max-width:20ch}
-.shead p{color:var(--mut); max-width:66ch; margin:0; font-size:16.5px}
+.shead p{color:var(--mut); max-width:54ch; margin:0; font-size:16px}
+.shead .sh-p{padding-top:9px}
+/* A heading and the sentence under it, side by side, so a wide screen
+   carries two columns of content instead of one and a margin. */
+.subhead{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+  gap:10px 46px; align-items:start; margin:56px 0 22px; padding-top:30px;
+  border-top:1px solid var(--hair)}
+.subhead .fold{margin:0; padding-top:0; border-top:0}
+.subhead .sub-lede{margin:0; max-width:54ch; padding-top:5px}
+@media (max-width:980px){
+  .shead{grid-template-columns:88px minmax(0,1fr)}
+  .shead .sh-p{grid-column:2; padding-top:14px}
+  .subhead{grid-template-columns:1fr}
+  .subhead .sub-lede{padding-top:0; margin-top:-8px}
+}
 .sbody{margin-left:114px}
 @media (max-width:820px){
   .shead{grid-template-columns:1fr; gap:0} .shead .num{padding:0 0 10px}
@@ -702,8 +717,12 @@ def _sub(section: str, heading: str, standfirst: str = "") -> str:
     body = section[start:end].rstrip()
     if body.endswith("</div>"):
         body = body[:-6]
-    lead = f'<p class="muted sub-lede">{standfirst}</p>' if standfirst else ""
-    return f'<h3 class="display fold">{heading}</h3>{lead}{body}'
+    if standfirst:
+        head = (f'<div class="subhead"><h3 class="display fold">{heading}</h3>'
+                f'<p class="muted sub-lede">{standfirst}</p></div>')
+    else:
+        head = f'<h3 class="display fold">{heading}</h3>'
+    return f'{head}{body}'
 
 
 def _chapter(num: str, cat: str, title: str, sub: str, *blocks: str) -> str:
@@ -741,10 +760,11 @@ def _fold(primary: str, *rest: str) -> str:
 
 
 def _shead(num: str, cat: str, title: str, sub: str = "") -> str:
-    p = f"<p>{sub}</p>" if sub else ""
-    return (f'<div class="shead"><div class="num">{num}</div><div>'
-            f'<p class="cat">{cat}</p><h2 class="display">{title}</h2>{p}'
-            f'</div></div>')
+    """The section title, with its standfirst in a column beside it."""
+    p = f'<div class="sh-p"><p>{sub}</p></div>' if sub else ""
+    return (f'<div class="shead"><div class="num">{num}</div>'
+            f'<div><p class="cat">{cat}</p><h2 class="display">{title}</h2></div>'
+            f'{p}</div>')
 
 
 def _page(body: str, title: str = "CosmUFR — cosmology from a power spectrum") -> HTMLResponse:
@@ -1665,20 +1685,19 @@ def _results() -> str:
 
 {_error_table()}
 
-<p class="muted"><span class="lead-in">Read this table first, and read it as bad
-news.</span> The middle column is how far a typical answer sits from the truth,
-on the data where each parameter actually varies. The column beside it is what a
-real survey achieves on the same quantity. This model is four to eight times
-worse on everything the CMB constrains well, and its error on neutrino mass is
-larger than the entire range that parameter is currently allowed to occupy. Its
-error on the expansion rate is about seventy percent of the whole Hubble tension,
-so it cannot speak to that question at all. Every row is also generous to this
-model: a survey constraint is a marginalised posterior on noisy sky data, and
-this is point-estimate scatter on noiseless emulator spectra with no window, no
-shot noise and no galaxy bias. That matters most for the two dark-energy rows,
-which look competitive and are not: a survey earns that number while
-marginalising over everything it does not know, and this model has never been
-asked to.</p>
+<p class="muted"><span class="lead-in">How it compares to a real survey.</span>
+The middle column is how far a typical answer sits from the truth, on the data
+where each parameter actually varies. The column beside it is what a survey
+achieves on the same quantity. This model is four to eight times worse on
+everything the CMB constrains well. Its error on neutrino mass is larger than the
+entire range that parameter is currently allowed to occupy, and its error on the
+expansion rate is about seventy percent of the whole Hubble tension, so it cannot
+speak to that question.</p>
+<p class="muted">The comparison is generous to this model on every row. A survey
+constraint is a marginalised posterior on noisy sky data; this is point-estimate
+scatter on noiseless emulator spectra with no window, no shot noise and no galaxy
+bias. That matters most for the two dark-energy rows, which look competitive and
+are not.</p>
 
 <h3 class="display" style="font-size:21px; margin:44px 0 10px">The same result as a ratio, and why it flatters</h3>
 <p class="muted">R&sup2; is what machine learning reports and what earlier
@@ -1691,12 +1710,12 @@ anything on its own.</p>
 <th class="num">where it varies</th><th class="num">bundled benchmark</th>
 <th>verdict</th></tr>{rows}</table></div></div>
 
-<p class="muted"><span class="lead-in">Read the second number, not the first.</span>
-R&sup2; measures how much of the spread in the truth the model explains. On data
-where a parameter is held at a fixed value there is no spread, so the score is
-meaningless. The "where it varies" column restricts each parameter to the data
-that actually varies it. For neutrino mass that is the whole story: it looks
-competent at 0.41 and is 0.011 once measured honestly.</p>
+<p class="muted"><span class="lead-in">The column to use is "where it
+varies".</span> R&sup2; measures how much of the spread in the truth the model
+explains, so on data where a parameter is held at a fixed value there is no
+spread and the score means nothing. That column restricts each parameter to the
+data that actually moves it. Neutrino mass is the whole argument in one row: 0.41
+across everything, 0.011 once measured only where it varies.</p>
 
 <p class="muted"><span class="lead-in">What reproduces.</span> The bundled
 6,000-case benchmark ships in the repository and regenerates its own column to
@@ -1704,7 +1723,7 @@ about 1e-6 on any machine. The full-test column came from a private split and
 cannot be checked from outside; the benchmark lands within about 0.03 of it and
 narrows that gap rather than closing it.</p>
 
-<h3 class="display" style="font-size:21px; margin:40px 0 10px">Why the headline is lower than the model deserves</h3>
+<h3 class="display" style="font-size:21px; margin:40px 0 10px">One broken suite drags every average down</h3>
 <div class="panel tight"><div class="tw"><table>
 <tr><th>simulation suite</th><th class="num">n</th>{hdr}</tr>{src}</table></div>
 <p class="dim" style="margin:12px 0 0"><code>&ndash;</code> means the parameter is
@@ -1718,11 +1737,6 @@ back at 0.98 to 0.99.</p>
 {_hydro_finding()}
 {_neutrino_finding()}
 
-<h3 class="display" style="font-size:21px; margin:44px 0 10px">Check it yourself</h3>
-<pre><code>git clone {REPO_URL}
-cd cosmufr-run4
-pip install -e ".[demo]"
-python -m cosmufr.reproduce</code></pre>
 </div></div></section>"""
 
 
@@ -1974,21 +1988,13 @@ def _outcome_table() -> str:
 
 def _audit() -> str:
     img = _png(F.fig_weight_audit(AUDIT))
-    rows = ""
-    for name, m in AUDIT.modules.items():
-        bad = m["verdict"] == "UNTRAINED"
-        rows += (f'<tr><td><code>{html.escape(name)}</code></td>'
-                 f'<td class="dim">{"used" if m["on_default_path"] else "unused"}</td>'
-                 f'<td class="num">{m["n_zero_bias"]}/{m["n_linear"]}</td>'
-                 f'<td class="num">{m["max_abs_bias"]:.3e}</td>'
-                 f'<td class="{"bad-t" if bad else "good-t"}">'
-                 f'{"never trained" if bad else "trained"}</td></tr>')
     return f"""<section id="what-i-observed"><div class="wrap">
-{_shead("02", "What I observed", "The design did not survive its own weights.",
-        "I trained the model eight times. Training ran. Then I opened the "
-        "finished weights and checked, part by part, what had actually changed. "
-        "This is what I found, and it is the reason everything after it is "
-        "written the way it is.")}
+{_shead("02", "What I observed", "The core of the design never trained.",
+        "I trained the model eight times, then opened the finished weights "
+        "and checked, part by part, what had actually changed. What follows is "
+        "the evidence in six parts: the weights, the eight runs, the accuracy "
+        "against real surveys, where it breaks, a linear baseline, and the "
+        "argument I got wrong.")}
 <div class="sbody">
 
 <div class="panel bad">
@@ -2022,46 +2028,15 @@ independent check: I compared the finished weights against a checkpoint from
 thirty-five epochs earlier, and in those three parts all 204 numbers are
 identical to the last digit, while the read-out layers had moved by 66 to 79
 percent.</p>
-<div class="panel tight"><div class="tw"><table>
-<tr><th>module</th><th></th><th class="num">biases = 0</th>
-<th class="num">max |bias|</th><th>verdict</th></tr>{rows}</table></div></div>
-
 {_figblock("weight_audit", img)}
 
-<h3 class="display" style="font-size:21px; margin:48px 0 10px">Why it happened</h3>
-<p class="muted">One line, visible in the released code, no checkpoint needed.
-The refinement loop cuts its own working state loose at the top of every step,
-which severs the connection back to everything that produced it:</p>
-<pre><code>for step in range(k):
-    b = b.detach()                      # &lt;- severs everything upstream
-    with torch.enable_grad():
-        b_g = b.requires_grad_(True)
-        E = energy_fn(b_g, z.detach(), b_prev.detach())
-        grad = torch.autograd.grad(E.sum(), b_g)[0]
-    b = b - eta * P * grad.detach()</code></pre>
-<p class="muted">One synthetic training step on a fresh model confirms it:
-<code>modules that received any gradient: ['param_head']</code>.</p>
-
-<h3 class="display" style="font-size:21px; margin:48px 0 10px">And reconnecting it would not be enough</h3>
-<p class="muted" style="max-width:70ch">This is the part that took longest to
-accept. The refinement was meant to work by rolling downhill: the scoring heads
-define a landscape, and each step moves the guess towards lower ground. Those
-scoring heads did train. They converged on a landscape that is flat.</p>
-<div class="panel warn"><div class="tw"><table>
-<tr><th>what I measured</th><th class="num">value</th><th>what it means</th></tr>
-<tr><td>Spread in the score across completely different spectra</td>
-<td class="num">1 part in 7,000,000</td>
-<td class="dim">the landscape is the same height everywhere</td></tr>
-<tr><td>Steepness of the slope, against the size of the guess</td>
-<td class="num">0.11 vs 16.5</td>
-<td class="dim">nothing to roll towards</td></tr>
-<tr><td>Furthest sixteen steps could move the guess</td>
-<td class="num">about 0.5%</td>
-<td class="dim">whatever spectrum you give it</td></tr>
-</table></div></div>
-<p class="muted">So there are two faults, not one, and they are not the same
-kind of thing. The first is a code defect with a known repair. The second is a
-question I cannot answer from inside this project.</p>
+<p class="muted"><span class="lead-in">There are two faults here, not one.</span>
+The first is a code defect with a known repair: one line in the refinement loop
+cuts the loop loose from everything that produced it. The second is not
+repairable that way. The refinement was meant to work by rolling downhill on a
+score the model learns for itself, and that score did train, on to a value it
+returns for every spectrum alike. Reconnecting the first fault gives the loop
+nothing to roll towards.</p>
 
 <div class="panel accent">
 <p class="muted" style="margin:0 0 12px"><span class="lead-in">What I do not
