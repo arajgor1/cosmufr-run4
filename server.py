@@ -845,8 +845,8 @@ def _hero() -> str:
 <div class="wrap">
 <div>
 <div class="eyebrow"><span class="dot"></span>Run 4 &middot; research preview &middot; live model</div>
-<h1 class="display">A 136M-parameter model for cosmological inference &mdash;<br>and
-<em>the audit that found its core mechanism never trained.</em></h1>
+<h1 class="display">A 136M-parameter model for cosmological inference &mdash;<br>
+<em>and the audit that found its core never trained.</em></h1>
 <p class="lede">CosmUFR infers eight cosmological parameters from the matter
 power spectrum in one forward pass. It was designed to reach them by refining a
 belief over sixteen steps. I stress-tested the released weights and that
