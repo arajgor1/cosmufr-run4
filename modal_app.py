@@ -57,9 +57,17 @@ cache_vol = modal.Volume.from_name("cosmufr-demo-cache", create_if_missing=True)
 app = modal.App(APP_NAME)
 
 
+# The result narrator calls a small language model to explain one run in plain
+# words. It is optional: without this secret the page falls back to the computed
+# reading, which is why nothing here is marked required.
+narrator_secret = modal.Secret.from_name("cosmufr-narrator",
+                                         required_keys=["OPENROUTER_API_KEY"])
+
+
 @app.function(
     image=image,
     volumes={"/cache": cache_vol},
+    secrets=[narrator_secret],
     cpu=2.0,
     memory=4096,
     min_containers=0,        # scale to zero: an idle demo costs nothing

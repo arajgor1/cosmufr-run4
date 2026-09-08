@@ -39,6 +39,7 @@ from cosmufr.diagram import architecture_svg
 from cosmufr.explain import FIGURE_NOTES, PARAM_MEANING
 from cosmufr.interpret import (read_parameters, read_pk, read_run,
                                read_settling)
+from cosmufr.narrate import narrate, run_facts
 from cosmufr.load import PARAM_LABELS
 from cosmufr.validate import K_GRID, validate_spectra
 
@@ -349,6 +350,18 @@ img.fig{width:100%; height:auto; border-radius:11px; margin:4px 0 0;
 .figcap{border:1px solid var(--line); border-top:0; border-radius:0 0 11px 11px;
   padding:18px 20px; background:var(--panel2)}
 .figblock img.fig{border-radius:11px 11px 0 0}
+.narration{border:1px solid rgba(59,130,246,.32); border-radius:12px;
+  background:rgba(59,130,246,.055); padding:20px 24px; margin:0 0 20px}
+.narration .nlbl{display:block; font-family:var(--mono); font-size:9.5px;
+  letter-spacing:.17em; text-transform:uppercase; color:var(--accent);
+  margin-bottom:12px}
+.narration p{margin:0 0 12px; font-size:15px; line-height:1.7; color:var(--fg);
+  max-width:74ch}
+.narration p:first-of-type{font-size:16.5px; color:#fff;
+  font-family:"Space Grotesk",Inter,sans-serif; font-weight:500;
+  letter-spacing:-.008em; line-height:1.5}
+.narration p.nfoot{font-size:12px; color:var(--dim); line-height:1.6;
+  margin:16px 0 0; padding-top:14px; border-top:1px solid var(--hair)}
 .reading{border-left:2px solid var(--accent); padding:2px 0 2px 16px;
   margin:0 0 20px}
 .reading .rlbl{display:block; font-family:var(--mono); font-size:9.5px;
@@ -373,6 +386,16 @@ img.fig{width:100%; height:auto; border-radius:11px; margin:4px 0 0;
 .two-up .panel{margin:0}
 h4.ch{margin:0 0 12px; font-family:var(--mono); font-size:10px; letter-spacing:.15em;
   text-transform:uppercase; color:var(--accent)}
+
+/* ── open questions ──────────────────────────────────── */
+.opens{display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+  gap:14px; margin:22px 0 26px}
+.op{border:1px solid var(--hair); border-left:3px solid var(--accent);
+  border-radius:11px; padding:20px 22px; background:rgba(20,20,23,.42)}
+.op h4{margin:0 0 10px; font-family:"Space Grotesk",Inter,sans-serif;
+  font-size:16.5px; font-weight:600; color:#fff; letter-spacing:-.012em;
+  line-height:1.35}
+.op p{margin:0; font-size:13.5px; line-height:1.68; color:var(--mut)}
 
 /* ── the standing of the work ─────────────────────────────────────────── */
 .verdicts{display:grid; grid-template-columns:repeat(auto-fit,minmax(268px,1fr));
@@ -1115,35 +1138,72 @@ whole time.</p>
     </ul>
   </div>
   <div class="vd next">
-    <h4>What has to happen next, in order</h4>
+    <h4>What we know how to fix</h4>
     <ul>
       <li><strong>Reconnect the refinement.</strong> A small code change, guarded
           by a test that already exists. Free, and verifiable before spending
           anything on training.</li>
-      <li><strong>Give the scoring heads something to score.</strong> The harder
-          one. Without it the reconnection buys nothing, because there is still
-          no landscape to descend.</li>
-      <li><strong>Produce a real uncertainty</strong>, and check it the way the
-          field checks one: does the stated interval contain the truth as often
-          as it claims?</li>
-      <li><strong>Rebalance the training data.</strong> The parameters it
-          recovers worst are the ones the corpus barely varies.</li>
-      <li><strong>Then one training run</strong>, with a pass mark written down
-          before it starts rather than after.</li>
+      <li><strong>Rebalance the training data.</strong> The parameters recovered
+          worst are the ones the corpus barely varies: dark energy sits at its
+          default value in 86% of rows.</li>
+      <li><strong>Correct the two suites</strong> whose redshift channels are
+          stored in the wrong order, and re-measure the one result currently
+          confounded by them.</li>
     </ul>
   </div>
 </div>
 
-<div class="panel">
-<p class="muted" style="margin:0 0 12px"><span class="lead-in">What this is
-aimed at.</span> A survey measurement should be interpretable in seconds rather
-than weeks, with an uncertainty you can defend to a referee. Get there and the
-analyses nobody runs today because they cost too much become ordinary: sweep an
-entire survey, re-run it under every systematic, close the loop between an
-observation and a constraint inside one working session.</p>
-<p class="muted" style="margin:0">Nothing here is at that point. The distance is
-the list above, and the honest thing to say about the list is that the second
-item on it is a research problem rather than a task.</p>
+<h3 class="display" style="font-size:21px; margin:46px 0 14px">What we do not know how to fix</h3>
+<p class="muted" style="max-width:74ch">These are the questions this project
+cannot settle from the inside, and they are why it is published in this state
+rather than quietly retrained. Each one changes what the next training run should
+be, and we cannot tell which answer is right.</p>
+
+<div class="opens">
+  <div class="op">
+    <h4>Is refining an answer worth doing at all?</h4>
+    <p>The design rests on the idea that a model which sharpens its answer over
+    several steps can spend more effort on a hard observation than an easy one.
+    That has not been tested, because the mechanism never ran. It is equally
+    possible that a single pass reaches the same place for a fraction of the
+    machinery, and nothing here argues otherwise. The experiment that would
+    settle it is cheap. Knowing whether it is the right experiment is not.</p>
+  </div>
+  <div class="op">
+    <h4>What should the internal score be trained to do?</h4>
+    <p>The refinement works by rolling downhill on a score the model learns for
+    itself. Ours is trained to be low wherever the network already landed, which
+    a constant satisfies, and it is never shown a correct answer to be low at. We
+    can see why that fails. We do not have a formulation we believe in, and the
+    ones we have tried trade one degenerate solution for another.</p>
+  </div>
+  <div class="op">
+    <h4>How much of the weakness is the measurement, and how much is us?</h4>
+    <p>Four of the eight parameters come back poorly. We claimed once that this
+    was a hard limit of the observable, and we were wrong; we now hold no
+    position at all. We cannot separate a real information limit from a limit of
+    our own training coverage, and the two imply completely different next
+    moves.</p>
+  </div>
+  <div class="op">
+    <h4>Would this ever reach real survey data?</h4>
+    <p>Nobody measures a matter power spectrum. A survey records where galaxies
+    are, and everything between that and this model's input is unbuilt here. We
+    do not know whether the right route is to model that gap or to rebuild the
+    input around what a survey actually produces.</p>
+  </div>
+</div>
+
+<div class="panel accent">
+<p class="muted" style="margin:0 0 12px"><span class="lead-in">What this is aimed
+at.</span> A survey measurement interpretable in seconds rather than weeks, with
+an uncertainty you can defend to a referee. Get there and the analyses nobody
+runs today because they cost too much become ordinary: sweep an entire survey,
+re-run it under every systematic, close the loop between an observation and a
+constraint inside one working session.</p>
+<p class="muted" style="margin:0">Nothing here is at that point, and the distance
+is not a schedule. It is the four questions above, of which only the last is
+mostly engineering.</p>
 </div>
 """
 
@@ -1364,6 +1424,55 @@ drawing the pictures below, not the model.</p>
 <td class="num">100%</td></tr></table></div></div>"""
 
 
+# How each parameter behaves across the whole held-out set, in words. The
+# narrator is given this so it can tell a reader which of eight numbers to weigh,
+# on a spectrum that has no known answer and cannot be scored.
+TRACK_RECORD = {
+    "Om": "recovers reliably", "s8": "recovers reliably",
+    "w0": "recovers about half the time", "h": "recovers about half the time",
+    "Ob": "not recovered", "ns": "not recovered",
+    "wa": "not recovered",
+    "mv": "not recovered, and barely distinguishable from noise once measured "
+          "only on data where it varies",
+}
+TYPICAL_ERROR = ({l: REPORT["full_val_metrics_varying_only"][l]["rmse"]
+                  for l in PARAM_LABELS} if REPORT else {})
+
+
+def _narration(result, truth, pk0, source: str, report) -> str:
+    """
+    An explanation of this run written for this run, or nothing.
+
+    Returns an empty string whenever the narrator is unavailable or its draft
+    failed the grounding check, and the caller then shows the computed reading
+    alone. The page must read correctly in both cases, so nothing here is load
+    bearing.
+    """
+    a = np.log10(np.clip(np.asarray(pk0, dtype=float), 1e-30, None))
+    lo = np.percentile(BENCH_LOGPK, 1, axis=0)
+    hi = np.percentile(BENCH_LOGPK, 99, axis=0)
+    outside = float(np.mean((a < lo) | (a > hi))) * 100
+
+    facts = run_facts(
+        result.params_array, result.sigmas_array, PARAM_LABELS, truth=truth,
+        source=source, outside_pct=outside,
+        belief_movement=report.belief_movement,
+        energy_ulps=report.energy_drop_in_ulps,
+        track_record=TRACK_RECORD, typical_error=TYPICAL_ERROR)
+
+    text = narrate(facts)
+    if not text:
+        return ""
+    paras = "".join(f"<p>{html.escape(p.strip())}</p>"
+                    for p in text.splitlines() if p.strip())
+    return (f'<div class="narration"><span class="nlbl">Reading this result</span>'
+            f'{paras}<p class="nfoot">Written for this run by a language model '
+            f'that was given the measurements above and nothing else, and is not '
+            f'permitted to state a number they do not contain. It has no access '
+            f'to the model being described. The computed summary below is '
+            f'produced by the code itself and does not depend on it.</p></div>')
+
+
 def _run(pk0, pk047, truth, source_label: str, selected=None) -> str:
     t = {}
     s = time.perf_counter()
@@ -1423,9 +1532,15 @@ def _run(pk0, pk047, truth, source_label: str, selected=None) -> str:
                   "from the simulation that produced this spectrum. The model "
                   "never saw this example during training.</p>")
 
+    s = time.perf_counter()
+    narration = _narration(result, truth, pk0, source_label, report)
+    if narration:
+        t["explain the result: one call to a small language model"] =             time.perf_counter() - s
+
     return f"""<div id="result"></div>
 <h3 class="display" style="font-size:24px; margin:38px 0 6px">Result</h3>
 <p class="muted" style="margin:0 0 4px">Input: {html.escape(source_label)}</p>
+{narration}
 {_reading(read_run(result.params_array, result.sigmas_array, truth,
                   reference=BENCH_LOGPK, pk_z0=pk0, settling=report))}
 <div class="panel"><div class="tw"><table>{head}{rows}</table></div>
@@ -1874,16 +1989,12 @@ sharpening never happened, and could not have. The parts that were supposed to d
 it are still holding the random numbers they were created with, in every one of
 the eight runs. What produces the answers is a single small read-out layer at the
 very end.</p>
-<p class="muted" style="margin:0"><span class="lead-in">Which is not the same as
-"nothing trained".</span> Most of the network did train. The distinction matters
-and it is the next table.</p>
+<p class="muted" style="margin:0">Most of the network did train, which is why
+this took months to see. Reading the finished weights part by part separates the
+two.</p>
 </div>
 
-<h3 class="display" style="font-size:21px; margin:44px 0 14px">Three things can happen to a part of a network. All three happened here.</h3>
-<p class="muted" style="max-width:70ch">A part can fail to receive any
-instruction, in which case it never changes. It can receive instruction, learn,
-and learn something worthless. Or it can work. Reading the finished weights tells
-you which, part by part.</p>
+<h3 class="display" style="font-size:21px; margin:44px 0 14px">What happened to each part</h3>
 {_outcome_table()}
 
 <p class="muted"><span class="lead-in">So both of these are true.</span> Training
@@ -1937,11 +2048,24 @@ scoring heads did train. They converged on a landscape that is flat.</p>
 <td class="num">about 0.5%</td>
 <td class="dim">whatever spectrum you give it</td></tr>
 </table></div></div>
-<p class="muted">So there are two faults, not one. The refinement was
-disconnected, and the thing it was meant to be following does not exist. Fixing
-the first is a small change we can verify before spending anything on training.
-Fixing the second means changing how the scoring heads are trained at all, and we
-do not have a solution we believe in yet. It is written up in what needs work.</p>
+<p class="muted">So there are two faults, not one, and they are not the same
+kind of thing. The first is a code defect with a known repair. The second is a
+question we cannot answer from inside this project.</p>
+
+<div class="panel accent">
+<p class="muted" style="margin:0 0 12px"><span class="lead-in">What we do not
+know, and would like to.</span> A score trained this way has no reason to put its
+lowest point at the right cosmology, because it is never shown one. It is trained
+to be low wherever the network already landed. We can see why that permits a
+constant, and we have not worked out what the objective should be instead.</p>
+<p class="muted" style="margin:0 0 12px">Underneath that sits the question the
+whole project was built to ask and has not asked: <strong style="color:var(--fg)">does
+refining an answer over several steps buy anything a single pass does not?</strong>
+Nothing in this release is evidence either way. We have a design that assumed it
+and never ran, which is not the same as a result.</p>
+<p class="muted" style="margin:0">Both are open, and the second is the one worth
+someone else's opinion before we spend another training run on it.</p>
+</div>
 
 <p class="dim">All of this reproduces from the released weights in about a
 minute, with <code>cosmufr.weight_audit(model)</code> and
