@@ -8,7 +8,7 @@ job is to reject, so the cases that matter are the ones it must not let through.
 """
 import pytest
 
-from cosmufr.narrate import _grounded, _numbers, run_facts
+from cosmufr.narrate import _grounded, _no_ratios, _numbers, run_facts
 
 SOURCE = (
     "Om: (how much matter the universe holds) predicted 0.32008, "
@@ -71,3 +71,39 @@ def test_facts_name_every_parameter_in_words():
 
 def test_numbers_survives_junk():
     assert _numbers("no digits here") == []
+
+
+# ── multiples ─────────────────────────────────────────────────────────────
+# A multiple is arithmetic on two measurements, and the numeric check cannot
+# catch it because small whole numbers are exempt. Live output claimed a miss
+# was "nearly nine times the typical error" when it was smaller than typical.
+
+SRC_MULT = ("mv (the combined mass of neutrinos) predicted 0.27174, "
+            "difference -0.10297, typical error across held-out data: 0.1146. "
+            "the sixteen refinement steps moved the internal answer")
+
+
+def test_rejects_invented_multiple():
+    ok, why = _no_ratios(
+        "the miss was nearly nine times the typical error", SRC_MULT)
+    assert not ok and "multiple" in why
+
+
+def test_rejects_ratio_words():
+    for phrase in ("it is twice the typical error",
+                   "an order of magnitude larger",
+                   "adding baryons doubles the error"):
+        ok, _ = _no_ratios(phrase, SRC_MULT)
+        assert not ok, phrase
+
+
+def test_keeps_a_multiple_the_measurements_supplied():
+    ok, _ = _no_ratios(
+        "the sixteen times it refines the answer changed nothing", SRC_MULT)
+    assert ok
+
+
+def test_plain_comparison_survives():
+    ok, _ = _no_ratios(
+        "it missed by 0.10297, against a typical error of 0.1146", SRC_MULT)
+    assert ok

@@ -37,8 +37,8 @@ import cosmufr
 from cosmufr import figures as F
 from cosmufr.diagram import architecture_svg
 from cosmufr.explain import FIGURE_NOTES, PARAM_MEANING
-from cosmufr.interpret import (read_parameters, read_pk, read_run,
-                               read_settling)
+from cosmufr.interpret import (PRIOR_RANGE, read_parameters, read_pk,
+                               read_run, read_settling)
 from cosmufr.narrate import narrate, run_facts
 from cosmufr.load import PARAM_LABELS
 from cosmufr.validate import K_GRID, validate_spectra
@@ -590,9 +590,9 @@ MARK = ('<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/sv
         'fill="none" stroke="currentColor" stroke-width="9"/>'
         '<circle cx="50" cy="50" r="9" fill="currentColor"/></svg>')
 
-NAV_LINKS = [("#what-we-did", "What we did"),
-             ("#what-we-observed", "What we observed"),
-             ("#what-we-conclude", "What we conclude"),
+NAV_LINKS = [("#what-i-did", "What I did"),
+             ("#what-i-observed", "What I observed"),
+             ("#what-i-conclude", "What I conclude"),
              ("#demo", "Try it"),
              ("#the-code", "The code")]
 
@@ -845,21 +845,21 @@ def _hero() -> str:
 <div class="wrap">
 <div>
 <div class="eyebrow"><span class="dot"></span>Run 4 &middot; research preview &middot; live model</div>
-<h1 class="display">A model for reading the universe &mdash;<br>and <em>the audit that found its
-core never trained.</em></h1>
+<h1 class="display">A 136M-parameter model for cosmological inference &mdash;<br>and
+<em>the audit that found its core mechanism never trained.</em></h1>
 <p class="lede">CosmUFR infers eight cosmological parameters from the matter
 power spectrum in one forward pass. It was designed to reach them by refining a
 belief over sixteen steps. I stress-tested the released weights and that
 refinement had never received a gradient, so the answers come from one read-out
-head on a frozen random projection. This page is in five parts: what we did,
-what we observed across eight training runs, what we conclude, the model running
+head on a frozen random projection. This page is in five parts: what I did,
+what I observed across eight training runs, what I conclude, the model running
 live on data you choose, and the code. Every number below is measured.</p>
 <p class="lede caveat"><span class="lead-in">Before anything else.</span> The
 input here is a matter power spectrum from emulators, not a measured observable.
 No survey window, no shot noise, no mask, no galaxy bias. Pointing this at real
 survey data would need all of them, and that work does not exist yet.</p>
 <div class="ctas">
-  <a class="btn btn-p" href="#what-we-observed">What we found &rarr;</a>
+  <a class="btn btn-p" href="#what-i-observed">What I found &rarr;</a>
   <a class="btn btn-g" href="#demo">Run it on real data</a>
 </div>
 <div class="metrics">
@@ -1011,7 +1011,7 @@ the model recovered that parameter for that universe.</p></div>
 <div class="card"><div class="n">Read with care</div><h4>The &sigma; column</h4>
 <p>The model reports an uncertainty, and it is not trustworthy. It emits the same
 constant on every input, so it is flagged in the results table and should be
-ignored. What we observed explains why.</p></div>
+ignored. What I observed explains why.</p></div>
 <div class="card"><div class="n">Expect a spread</div><h4>Not all eight are equal</h4>
 <p>The spectrum constrains matter density and clumpiness strongly, expansion rate
 and dark energy weakly, and neutrino mass essentially not at all. That ordering
@@ -1138,7 +1138,7 @@ whole time.</p>
     </ul>
   </div>
   <div class="vd next">
-    <h4>What we know how to fix</h4>
+    <h4>What I know how to fix</h4>
     <ul>
       <li><strong>Reconnect the refinement.</strong> A small code change, guarded
           by a test that already exists. Free, and verifiable before spending
@@ -1153,11 +1153,11 @@ whole time.</p>
   </div>
 </div>
 
-<h3 class="display" style="font-size:21px; margin:46px 0 14px">What we do not know how to fix</h3>
+<h3 class="display" style="font-size:21px; margin:46px 0 14px">What I do not know how to fix</h3>
 <p class="muted" style="max-width:74ch">These are the questions this project
 cannot settle from the inside, and they are why it is published in this state
 rather than quietly retrained. Each one changes what the next training run should
-be, and we cannot tell which answer is right.</p>
+be, and I cannot tell which answer is right.</p>
 
 <div class="opens">
   <div class="op">
@@ -1173,22 +1173,22 @@ be, and we cannot tell which answer is right.</p>
     <h4>What should the internal score be trained to do?</h4>
     <p>The refinement works by rolling downhill on a score the model learns for
     itself. Ours is trained to be low wherever the network already landed, which
-    a constant satisfies, and it is never shown a correct answer to be low at. We
-    can see why that fails. We do not have a formulation we believe in, and the
-    ones we have tried trade one degenerate solution for another.</p>
+    a constant satisfies, and it is never shown a correct answer to be low at. I
+    can see why that fails. I do not have a formulation I believe in, and the
+    ones I have tried trade one degenerate solution for another.</p>
   </div>
   <div class="op">
-    <h4>How much of the weakness is the measurement, and how much is us?</h4>
-    <p>Four of the eight parameters come back poorly. We claimed once that this
-    was a hard limit of the observable, and we were wrong; we now hold no
-    position at all. We cannot separate a real information limit from a limit of
-    our own training coverage, and the two imply completely different next
-    moves.</p>
+    <h4>How much of the weakness is the measurement, and how much is mine?</h4>
+    <p>Two of the eight parameters recover well and six do not. I claimed once
+    that this was a hard limit of the observable, then checked the argument and
+    found it did not hold, so I hold no position on it now. I cannot separate a
+    real information limit from a limit of my own training coverage, and the two
+    imply completely different next moves.</p>
   </div>
   <div class="op">
     <h4>Would this ever reach real survey data?</h4>
     <p>Nobody measures a matter power spectrum. A survey records where galaxies
-    are, and everything between that and this model's input is unbuilt here. We
+    are, and everything between that and this model's input is unbuilt here. I
     do not know whether the right route is to model that gap or to rebuild the
     input around what a survey actually produces.</p>
   </div>
@@ -1380,7 +1380,7 @@ parameters, so you know the right answer before the model gives you one.</p>
   <a class="dl" href="/download/example/{sel}.csv">&#8595; this spectrum .csv</a>
   <a class="dl" href="/download/example/{sel}.npy">&#8595; this spectrum .npy</a>
 </div>
-<p class="dim" style="margin:14px 0 0"><span class="lead-in">Check us.</span>
+<p class="dim" style="margin:14px 0 0"><span class="lead-in">Check it.</span>
 Download the spectrum above, upload it below as your own file, and compare. The
 upload path runs identical code with no special-casing, so the two answers should
 match to the last digit. If they do not, that is a bug worth reporting.</p>
@@ -1453,9 +1453,20 @@ def _narration(result, truth, pk0, source: str, report) -> str:
     hi = np.percentile(BENCH_LOGPK, 99, axis=0)
     outside = float(np.mean((a < lo) | (a > hi))) * 100
 
+    # The same thresholds the computed summary uses, so the two paragraphs
+    # cannot disagree about how many parameters missed.
+    tally = None
+    if truth is not None:
+        frac = {l: abs(float(result.params_array[i]) - float(truth[i]))
+                   / PRIOR_RANGE[l] for i, l in enumerate(PARAM_LABELS)}
+        close = sum(1 for v in frac.values() if v < 0.05)
+        missed = sum(1 for v in frac.values() if v > 0.10)
+        tally = (f"{close} of the eight landed close, {missed} clearly missed, "
+                 f"and the rest sit in between")
+
     facts = run_facts(
         result.params_array, result.sigmas_array, PARAM_LABELS, truth=truth,
-        source=source, outside_pct=outside,
+        source=source, outside_pct=outside, tally=tally,
         belief_movement=report.belief_movement,
         energy_ulps=report.energy_drop_in_ulps,
         track_record=TRACK_RECORD, typical_error=TYPICAL_ERROR)
@@ -1758,11 +1769,11 @@ time.</p></div>
 <p class="muted"><span class="lead-in">What this does and does not
 show.</span> The obvious question about a model trained on many simulation suites
 is what happens on data unlike any of them, and this is the closest thing to that
-test in the release. It fails it. But we cannot yet call it a clean result about
+test in the release. It fails it. But I cannot yet call it a clean result about
 gas physics, for a reason worth stating.</p>
 
 <div class="panel warn">
-<p class="muted" style="margin:0 0 12px"><span class="lead-in">A confound we
+<p class="muted" style="margin:0 0 12px"><span class="lead-in">A confound I
 found while testing this page.</span> This suite differs from the rest of the
 corpus in two ways at once, not one. It has the gas physics. It also has its two
 redshift channels stored in the opposite order to every other suite: the gap
@@ -1775,8 +1786,8 @@ other. Swapping the rows back does not rescue the scores. And one other suite,
 Together those point at the gas physics rather than the ordering as the cause,
 but pointing is not measuring.</p>
 <p class="muted" style="margin:0">So the honest statement is narrower than the
-one we started to write: the model fails badly on the only slice of real
-hydrodynamics it is tested against, and we cannot yet say how much of that is the
+one I started to write: the model fails badly on the only slice of real
+hydrodynamics it is tested against, and I cannot yet say how much of that is the
 physics and how much is a data defect. Separating them needs a rerun on the full
 suite with the ordering corrected, which is now on the list.</p>
 </div>
@@ -1972,11 +1983,11 @@ def _audit() -> str:
                  f'<td class="num">{m["max_abs_bias"]:.3e}</td>'
                  f'<td class="{"bad-t" if bad else "good-t"}">'
                  f'{"never trained" if bad else "trained"}</td></tr>')
-    return f"""<section id="what-we-observed"><div class="wrap">
-{_shead("02", "What we observed", "The design did not survive its own weights.",
-        "We trained the model eight times. Training ran. Then we opened the "
+    return f"""<section id="what-i-observed"><div class="wrap">
+{_shead("02", "What I observed", "The design did not survive its own weights.",
+        "I trained the model eight times. Training ran. Then I opened the "
         "finished weights and checked, part by part, what had actually changed. "
-        "This is what we found, and it is the reason everything after it is "
+        "This is what I found, and it is the reason everything after it is "
         "written the way it is.")}
 <div class="sbody">
 
@@ -2003,11 +2014,11 @@ design rests on never moved at all, because they were disconnected from what was
 being optimised. Running training more times could not have fixed that. Nothing
 was asking them to change.</p>
 
-<h3 class="display" style="font-size:21px; margin:48px 0 10px">How we know</h3>
+<h3 class="display" style="font-size:21px; margin:48px 0 10px">How I know</h3>
 <p class="muted">Training sets every bias in the network to exactly zero before
 it starts, and the first instruction to reach one moves it off zero. Eighty-four
 of them are still bit-exactly <code>0.0</code> after forty epochs. A second,
-independent check: we compared the finished weights against a checkpoint from
+independent check: I compared the finished weights against a checkpoint from
 thirty-five epochs earlier, and in those three parts all 204 numbers are
 identical to the last digit, while the read-out layers had moved by 66 to 79
 percent.</p>
@@ -2037,7 +2048,7 @@ accept. The refinement was meant to work by rolling downhill: the scoring heads
 define a landscape, and each step moves the guess towards lower ground. Those
 scoring heads did train. They converged on a landscape that is flat.</p>
 <div class="panel warn"><div class="tw"><table>
-<tr><th>what we measured</th><th class="num">value</th><th>what it means</th></tr>
+<tr><th>what I measured</th><th class="num">value</th><th>what it means</th></tr>
 <tr><td>Spread in the score across completely different spectra</td>
 <td class="num">1 part in 7,000,000</td>
 <td class="dim">the landscape is the same height everywhere</td></tr>
@@ -2050,21 +2061,21 @@ scoring heads did train. They converged on a landscape that is flat.</p>
 </table></div></div>
 <p class="muted">So there are two faults, not one, and they are not the same
 kind of thing. The first is a code defect with a known repair. The second is a
-question we cannot answer from inside this project.</p>
+question I cannot answer from inside this project.</p>
 
 <div class="panel accent">
-<p class="muted" style="margin:0 0 12px"><span class="lead-in">What we do not
+<p class="muted" style="margin:0 0 12px"><span class="lead-in">What I do not
 know, and would like to.</span> A score trained this way has no reason to put its
 lowest point at the right cosmology, because it is never shown one. It is trained
-to be low wherever the network already landed. We can see why that permits a
-constant, and we have not worked out what the objective should be instead.</p>
+to be low wherever the network already landed. I can see why that permits a
+constant, and I have not worked out what the objective should be instead.</p>
 <p class="muted" style="margin:0 0 12px">Underneath that sits the question the
 whole project was built to ask and has not asked: <strong style="color:var(--fg)">does
 refining an answer over several steps buy anything a single pass does not?</strong>
-Nothing in this release is evidence either way. We have a design that assumed it
+Nothing in this release is evidence either way. I have a design that assumed it
 and never ran, which is not the same as a result.</p>
 <p class="muted" style="margin:0">Both are open, and the second is the one worth
-someone else's opinion before we spend another training run on it.</p>
+someone else's opinion before I spend another training run on it.</p>
 </div>
 
 <p class="dim">All of this reproduces from the released weights in about a
@@ -2253,7 +2264,7 @@ def _limits() -> str:
     items = [
         ("The belief pipeline never trained.",
          "The encoder, the belief proposal and the settling core sit at "
-         "initialization. See what we observed, above."),
+         "initialization. See what I observed, above."),
         ("The energy landscape is flat.",
          "The energy heads collapsed to an input-independent constant, so there "
          "is nothing for the refinement to descend."),
@@ -2332,9 +2343,9 @@ def _full(demo_inner: str = "", selected=None) -> str:
     are evidence rather than argument now sit inside the question they answer.
     """
     did = _chapter(
-        "01", "What we did", "Teach a network to run the physics backwards.",
+        "01", "What I did", "Teach a network to run the physics backwards.",
         "Working out which universe produced a measurement takes days of "
-        "compute. We tried to replace that with a network that has seen enough "
+        "compute. I tried to replace that with a network that has seen enough "
         "simulated universes to recognise one on sight.",
         _sub(_idea(), "The problem, and the bet"),
         _sub(_input_section(), "What the model reads",
@@ -2346,10 +2357,10 @@ def _full(demo_inner: str = "", selected=None) -> str:
         _sub(_evolution(), "Eight runs, and what each one taught"),
         _sub(_results(), "How accurate it actually is"),
         _sub(_baseline(), "Is the large model earning its size?"),
-        _sub(_ceiling(), "And our explanation for all of it was wrong"))
+        _sub(_ceiling(), "And my explanation for all of it was wrong"))
 
     conclude = _chapter(
-        "03", "What we conclude", "A working baseline, and an untested idea.",
+        "03", "What I conclude", "A working baseline, and an untested idea.",
         "The interesting claim has not been tested, because the mechanism that "
         "would have tested it never ran. What exists is a fast, checkable, "
         "openly flawed starting point.",

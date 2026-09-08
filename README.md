@@ -47,7 +47,7 @@ thing end to end.
 
 ---
 
-## 1 · What we did
+## 1 · What I did
 
 **The problem.** Turning a sky survey into a statement about the universe means
 running the physics backwards. The conventional route guesses a cosmology,
@@ -72,17 +72,17 @@ BCemu, DarkEmulator, CAMB, and CAMELS IllustrisTNG and SIMBA. Almost all of it i
 emulator output: smooth fitted functions, not simulations. About 6,000 rows come
 from full hydrodynamic simulations, which is 0.007% of the corpus.
 
-**What we ran.** Four full training runs, then four more architectural variants
+**What I ran.** Four full training runs, then four more architectural variants
 during an investigation into why six of the eight parameters would not improve.
 Eight runs in total.
 
 ---
 
-## 2 · What we observed
+## 2 · What I observed
 
 ### The design did not survive its own weights
 
-We opened the finished checkpoint and checked, part by part, what had actually
+I opened the finished checkpoint and checked, part by part, what had actually
 changed. There are three outcomes, not two:
 
 | outcome | share | which parts |
@@ -99,7 +99,7 @@ answer.
 confusing for months: training ran and moved most of the model, *and* the three
 parts the whole design rests on never moved at all.
 
-**How we know.** Training zero-initialises every `Linear` bias, and the first
+**How I know.** Training zero-initialises every `Linear` bias, and the first
 gradient to reach one moves it off zero; 84 are still bit-exactly `0.0` after
 forty epochs. Independently: diffing the finished weights against a checkpoint
 thirty-five epochs earlier, all 204 tensors in those three modules are identical
@@ -123,7 +123,7 @@ landscape that is flat: the score varies by about one part in seven million
 across completely different spectra, its slope has norm 0.11 against a belief of
 norm 16.5, and sixteen steps could move the belief half a percent at most,
 whatever the input. So there are two faults, not one. The first is a small change
-we can verify before spending anything on training. The second is a research
+I can verify before spending anything on training. The second is a research
 problem.
 
 ### How accurate it actually is
@@ -203,7 +203,7 @@ a network of matched size trained directly on the same inputs. Rerun with
 
 On `camels_astrid_x`, the one evaluation slice from a full hydrodynamic
 simulation, the model scores worse than a constant predictor on six of eight
-parameters, including −5.08 on h. **That result is confounded, and we say so.**
+parameters, including −5.08 on h. **That result is confounded, and I say so.**
 That suite also stores its two redshift channels in the opposite order to every
 other suite, so it differs from the corpus in two ways at once. Swapping the rows
 back does not rescue the scores, and the other reversed suite scores normally,
@@ -221,7 +221,7 @@ alike, and nothing in the eight output slots distinguishes them.
 zero on everything, because its two redshift channels are byte-identical copies
 and carry no growth information.
 
-### And our explanation for all of it was wrong
+### And my explanation for all of it was wrong
 
 Earlier material claimed a Fisher information ceiling of 0.49 and said the model
 had reached it, so the limit lay in the observable rather than in the
@@ -238,7 +238,7 @@ shot-noise term, a binning. Every row here is a noiseless emulator evaluation, s
 the covariance is zero, the information is unbounded, and no such ceiling can
 exist. A score short of perfect on noiseless data is a limit of the estimator,
 never of the information. What the calculation actually was is a weighted average
-of our own scores, with weights we chose, recovering the number the model had
+of my own scores, with weights I chose, recovering the number the model had
 already scored.
 
 ### And the run-to-run comparisons were noise
@@ -249,7 +249,7 @@ repository for that reason.
 
 ---
 
-## 3 · What we conclude
+## 3 · What I conclude
 
 **The architecture this project set out to test has not been tested.** The
 mechanism that makes it interesting never ran, so nothing here is evidence for or

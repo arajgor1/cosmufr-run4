@@ -166,7 +166,7 @@ def read_pk(k, pk_z0, pk_z047, pk_recon, log_k=None,
                     f"at the smallest. There is no information in it."))
         out.append(("body",
                     "What this changes: it does not prove the parameters above "
-                    "are wrong. It does mean one of the two independent ways we "
+                    "are wrong. It does mean one of the two independent ways I "
                     "had of checking them is unavailable, so they rest on the "
                     "accuracy tables alone."))
     else:
@@ -253,7 +253,7 @@ def read_parameters(params: np.ndarray, sigmas: np.ndarray,
                     f"close, and {len(poor)} clearly wrong."))
         if best is not None:
             out.append(("body",
-                        f"Because this example came from a simulation we know "
+                        f"Because this example came from a simulation I know "
                         f"the real answer, so the last column is a score rather "
                         f"than a guess. It did best on {SHORT[best[0]]}, landing "
                         f"within {best[1] * 100:.1f}% of the full range that "

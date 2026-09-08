@@ -20,7 +20,7 @@ pipeline_tag: tabular-regression
 > **Read this first.** Three parts of this network never received a gradient
 > during training and still hold their initial random values; five more trained
 > and converged on outputs that ignore the input; one part trained and does all
-> the useful work. The table under "What we observed" says which is which.
+> the useful work. The table under "What I observed" says which is which.
 > Earlier published figures for this model (Ω_m 0.907, σ₈ 0.911, h 0.604) are
 > superseded and should not be cited.
 
@@ -57,7 +57,7 @@ output. Four training runs, then four architectural variants: eight in total.
 
 Parameters, in output order: Ω_m, σ₈, h, n_s, Ω_b, w₀, Σm_ν, w_a.
 
-## What we observed
+## What I observed
 
 Reading the finished weights part by part gives three outcomes, not two:
 

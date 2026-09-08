@@ -50,6 +50,16 @@ new ones, do not convert units, do not round to a different number of digits.
 3. If the measurements do not settle a question, say it is not settled. Never \
 resolve an uncertainty by guessing.
 4. Do not reassure. If the run shows the answer is untrustworthy, say so first.
+5. Report what happened, never why. Do not say a parameter is hard to recover, \
+or that the input does not contain it, or that training did not cover it. Whether \
+a weak result is a limit of the measurement or a limit of this model is an open \
+question the authors explicitly hold no position on, and a sentence that settles \
+it is wrong however reasonable it sounds.
+6. If a count is supplied, use that count. Do not derive your own tally of how \
+many parameters succeeded or failed.
+7. Never state a comparison as a multiple or a ratio. Not "twice", not "nine \
+times larger", not "half of", not "an order of magnitude". To compare two \
+supplied numbers, write both of them and say which is larger.
 
 Write 3 to 4 short paragraphs, under 260 words in total, no headings, no lists, \nno markdown. Open with the \
 single most important thing a reader should take away. Then the evidence for it. \
@@ -98,6 +108,36 @@ def _numbers(text: str) -> List[float]:
         except ValueError:
             continue
     return out
+
+
+# A multiple is arithmetic on two measurements dressed as prose, and the
+# numeric check cannot catch it: "nine times" is a small whole number and those
+# are exempt so counting words survive. Caught by shape instead.
+_MULT = re.compile(
+    r"\b(?:(\d+(?:\.\d+)?)|(one|two|three|four|five|six|seven|eight|nine|ten|"
+    r"eleven|twelve|fifteen|sixteen|twenty|thirty|fifty|hundred))\s+times\b",
+    re.I)
+_RATIO_WORDS = re.compile(
+    r"\b(twice|thrice|double|doubles|doubled|triple|tripled|halve[sd]?|"
+    r"orders? of magnitude)\b", re.I)
+
+
+def _no_ratios(draft: str, source: str) -> Tuple[bool, str]:
+    """Reject a comparison expressed as a multiple the measurements never gave."""
+    if _RATIO_WORDS.search(draft):
+        return False, "ratio word"
+    allowed = _numbers(source)
+    low = source.lower()
+    for m in _MULT.finditer(draft):
+        digits, word = m.group(1), m.group(2)
+        if digits is not None:
+            v = float(digits)
+            if any(abs(v - a) <= 1e-9 * max(1.0, abs(a)) for a in allowed):
+                continue
+        elif word and re.search(rf"\b{word.lower()}\b", low):
+            continue
+        return False, f"unsupported multiple {m.group(0)!r}"
+    return True, ""
 
 
 def _grounded(draft: str, source: str) -> Tuple[bool, str]:
@@ -169,6 +209,9 @@ def narrate(facts: Dict[str, object], *, api_key: Optional[str] = None,
         ok, _why = _grounded(draft, source)
         if not ok:
             continue
+        ok, _why = _no_ratios(draft, source)
+        if not ok:
+            continue
         # Told not to use them; a stray one is a formatting slip rather than a
         # reason to throw away a grounded explanation.
         return draft.replace("—", ", ").replace("**", "")
@@ -181,7 +224,8 @@ def run_facts(params, sigmas, labels, truth=None, *, source: str = "",
               energy_ulps: Optional[float] = None,
               recon_span: Optional[float] = None,
               track_record: Optional[Dict[str, str]] = None,
-              typical_error: Optional[Dict[str, float]] = None) -> Dict[str, object]:
+              typical_error: Optional[Dict[str, float]] = None,
+              tally: Optional[str] = None) -> Dict[str, object]:
     """
     Assemble the measurements a narrator is allowed to talk about.
 
@@ -230,6 +274,8 @@ def run_facts(params, sigmas, labels, truth=None, *, source: str = "",
     if energy_ulps is not None:
         facts["how much the score those steps were meant to reduce actually changed"] = (
             f"{energy_ulps:.1f} of the smallest amounts the arithmetic can represent")
+    if tally is not None:
+        facts["how this run scored, and the only tally you may use"] = tally
     if recon_span is not None:
         facts["spread of the model's attempt to redraw the input spectrum"] = (
             f"{recon_span:.6f} decades, where the input itself spans several")

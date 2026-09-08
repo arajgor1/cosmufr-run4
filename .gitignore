@@ -39,3 +39,4 @@ Thumbs.db
 # Pending: pushing this needs a PAT with the "workflow" scope.
 # Re-add with:  git add -f .github/workflows/tests.yml
 .github/workflows/
+.claude/
