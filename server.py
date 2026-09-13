@@ -1380,7 +1380,7 @@ def _form(selected=None) -> str:
     return f"""
 <div class="panel">
 <p class="muted" style="margin:0 0 6px"><span class="lead-in">Pick a universe and
-run it.</span> Each card is a simulated cosmology held out of training. The label
+run it.</span> Each card is a simulated cosmology from the held-out split. The label
 is the code that produced it, and the numbers underneath are its <em>true</em>
 parameters, so you know the right answer before the model gives you one.</p>
 <p class="dim" style="margin:0 0 14px">Currently selected: #{sel}, from
