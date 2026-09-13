@@ -32,10 +32,10 @@ VERDICT = {
     "obs": ("still at init", C_BAD),
     "prop": ("still at init", C_BAD),
     "settle": ("still at init", C_BAD),
-    "energy": ("trained, output constant", C_WARN),
+    "energy": ("trained, unbounded loss", C_WARN),
     "param": ("trained, works", C_OK),
     "unc": ("stuck at its floor", C_WARN),
-    "gen": ("returns a constant", C_WARN),
+    "gen": ("no input dependence", C_WARN),
 }
 
 W, H = 1020, 366

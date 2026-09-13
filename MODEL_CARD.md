@@ -19,10 +19,11 @@ the matter power spectrum, released with an audit of its training defects.**
 - Checkpoint SHA256: `5db09d4ff02316c60a43e08fa242223d3243f4f224b625798eaf385151150fc1`
 
 > **Read this first.** The network was designed to refine its answer over sixteen
-> steps. In this checkpoint the encoder, the belief proposal and the refinement
-> networks are bit-identical to their pre-training state, and the code that
-> trained it gives them no gradient. The eight parameters come from a read-out
-> head on a fixed random projection of the input. Earlier published figures for
+> steps. In this checkpoint the encoder, the belief proposal and the learned
+> step-size and preconditioner networks are bit-identical to their pre-training
+> state, and the code that trained it gives them no gradient. The loop still runs,
+> following the gradient of trained energy heads, and changes each answer slightly;
+> a predictive benefit has not been established. Earlier published figures for
 > this model (Ω_m 0.907, σ₈ 0.911, h 0.604) are superseded and should not be
 > cited.
 
@@ -47,10 +48,10 @@ test it, because the refinement did not train.
 | | |
 |---|---|
 | Developed by | Aaditya Rajgor |
-| Model type | Feed-forward point predictor with an intended (non-operating) energy-based refinement loop; no attention |
+| Model type | Feed-forward point predictor followed by a 16-step energy-based refinement loop whose update networks were never trained; no attention |
 | Parameters | 136,194,617 |
 | Inputs | `log10 P(k)`, 200 log-spaced k bins over k ∈ [0.1, 4.5] h/Mpc, at z = 0 and z = 0.47 |
-| Outputs | 8 cosmological parameters. Also 8 σ values and a P(k) reconstruction, both degenerate: see limitations |
+| Outputs | 8 cosmological parameters. Also 8 σ values and a P(k) reconstruction, neither validated: see limitations |
 | Precision | float32 |
 | Latency | a few hundred milliseconds per spectrum on CPU |
 | Determinism | bit-identical across repeated runs on the same environment (reproduced) |
@@ -89,6 +90,10 @@ Diagnostic, run `pre-outreach-m01-gradient-diagnosis-20260913_030043`. Gradient 
   gradients. Later training code reconnects the encoder, and the proposal only
   when every step is retained. The step-size and preconditioner networks receive
   no gradient in any configuration examined.
+- **The loop still runs.** Each step follows the gradient of the trained energy
+  heads through the untrained step-size and preconditioner networks. On all 6,000
+  benchmark rows it changes every prediction slightly (belief movement median
+  0.09%). Whether that helps has not been tested.
 - **The energy objective is unbounded below.** It adds the mean energy to a
   difference-only contrastive term, so a constant downward shift lowers the loss
   one-for-one. A diagnostic shift of 1,000 lowered it by exactly 1,000. Run 4's
@@ -109,7 +114,7 @@ Research and teaching:
   emulator spectra.
 
 **Not** for producing cosmological constraints. The input is not an observable,
-the σ output carries no information, and there is no posterior.
+the σ output is not validated, and there is no posterior.
 
 ## Results
 
@@ -197,16 +202,19 @@ master validation rows and `bad_indices.npy`.
 
 ## Limitations and known defects
 
-1. **The refinement core is at initialization** (see above).
-2. **The energy is constant.** On six benchmark spectra the energy is −926,537.375
-   and changes by at most one float32 step over sixteen steps. Mean belief
-   movement over the validation report is 0.09%.
-3. **The σ output is a constant.** `UncertaintyHead` sits at its clamp floor:
+1. **The refinement's update networks are at initialization, and its benefit is
+   untested** (see above).
+2. **The stored energy is not informative about the landscape.** On benchmark
+   spectra it reads about −926,537, where one float32 step is 0.0625, so small
+   changes do not show; in float64 the refinement lowers it slightly on every row
+   checked. An added constant would change the value without changing the gradient.
+3. **The σ output sits at its clamp floor.** `UncertaintyHead` sits at its clamp floor:
    σ = 0.1 for six of eight parameters on every benchmark input. Do not use these
    as error bars.
 4. **Neutrino mass is not recovered** (R² 0.011 where it varies, saved report).
-5. **The generative head returns a constant**, 2.6327 at every k and for every
-   input. There is no reconstruction.
+5. **The generative head's output does not follow the input** on the 6,000
+   benchmark rows: it stays near 2.6327, varying by less than 1e-6 across k and
+   1e-4 across rows.
 6. **Two redshifts only.** Multi-redshift generalization is unvalidated.
 7. **No ablation and no matched direct network.** Ridge regression on the same 400
    inputs, fitted on 3,000 rows, beats this model on Ω_m (0.738 against 0.716).
@@ -233,7 +241,7 @@ The architecture this model is named for has not been tested. Nothing here is
 evidence for or against iterative refinement. On its own terms this is a
 deterministic point predictor that recovers matter density and clustering
 amplitude on emulator spectra, is beaten by a linear fit on one of them, produces
-no usable uncertainty, and fails on the one hydrodynamic slice it is tested
+no validated uncertainty, and fails on the one hydrodynamic slice it is tested
 against.
 
 ## Training data

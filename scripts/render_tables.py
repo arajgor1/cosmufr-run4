@@ -126,7 +126,26 @@ def _modules(r: dict) -> str:
             f"by moving average, not by gradient.\n\n" + "\n".join(rows))
 
 
+def _settling(r: dict) -> str:
+    se = r["settling_effect"]
+    mv = se["relative_belief_movement"]
+    de = se["energy_float64_change_over_16_steps"]
+    rows = ["| Parameter | Largest change in prediction, 16 steps vs 0 | R² where it varies, 0 steps | R², 16 steps | Difference |",
+            "|---|---:|---:|---:|---:|"]
+    for p in PARAMS:
+        a, b, d = se["r2_varying_k0"][p], se["r2_varying_k16"][p], se["r2_varying_difference"][p]
+        rows.append(f"| {SYMBOL[p]} | {se['prediction_change'][p]['max_abs']:.1e} | {_f(a)} | {_f(b)} | "
+                    f"{'undefined' if d is None else f'{d:+.4f}'} |")
+    return (f"Diagnostic on all {se['rows']:,} benchmark rows (torch {se['environment']['torch']}, CPU), comparing the "
+            f"released model with 0 and {se['k_settle']} refinement steps. The loop changes every prediction; the "
+            f"belief moves by a median {mv['median'] * 100:.2f}% (largest {mv['max'] * 100:.1f}%). Evaluated in "
+            f"float64 on {se['energy_checked_rows']} rows, the steps lower the energy on every row, by "
+            f"{abs(de['max']):.1e} to {abs(de['min']):.1e}. **This is not a test of predictive benefit**: one "
+            f"benchmark, no uncertainty on the differences, no matched comparison.\n\n" + "\n".join(rows))
+
+
 TABLES = {
+    "settling_effect": _settling,
     "validation_metrics": _validation,
     "benchmark_metrics": _benchmark,
     "validation_per_source": _per_source,

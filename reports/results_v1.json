@@ -1,6 +1,6 @@
 {
   "schema": "cosmufr-results/1",
-  "generated_utc": "2026-09-13T03:14:27+00:00",
+  "generated_utc": "2026-09-13T04:16:46+00:00",
   "provenance_labels": [
     "diagnostic",
     "historical",
@@ -20,7 +20,9 @@
     "master_headers": "d22f9de4b03714f7ac3c222903331303a41739c70f69c9dc440275fa1e163f15",
     "run4_training_log": "717229153021a478c55773fa9ed3d6d72fc636b04b03f2eaa158ca299fe2f825",
     "honest_eval": "1439a979f7d88cc3f27af551a4a685c41a3a75768b264c0655e205f66d423a88",
-    "ridge_baseline": "ce95ef05454bbf74f5c1d9eb9922cf6ad6ced23c2ffb9d1eaaba95ed9d3e5d23"
+    "ridge_baseline": "ce95ef05454bbf74f5c1d9eb9922cf6ad6ced23c2ffb9d1eaaba95ed9d3e5d23",
+    "settling_k0_k16": "9415f698478f5201860cc1c8e31a98136f671cc804a3f6fc4535cec51a8d122b",
+    "independent_k0_k16": "10d58d53d7c2cb61ebf3c0d216c9f7adc66a96626a1940702e4a8507ea307b54"
   },
   "checkpoint": {
     "provenance": "reproduced",
@@ -2092,10 +2094,151 @@
     }
   },
   "reconstruction": {
-    "provenance": "reproduced",
-    "value": 2.6326823234558105,
-    "std_across_k": 4.1084854274231475e-07,
-    "std_across_inputs": 9.07852069076398e-08
+    "provenance": "diagnostic",
+    "scope": "generative head output on all 6,000 benchmark rows at the default 16 steps",
+    "environment": {
+      "python": "3.12.6",
+      "torch": "2.9.1+cpu",
+      "numpy": "2.2.6",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "threads": 8
+    },
+    "rows": 6000,
+    "value_min": 2.6326818466186523,
+    "value_max": 2.6326828002929688,
+    "max_std_across_k": 4.4635882545662753e-07,
+    "max_std_across_rows": 8.248095400631428e-05
+  },
+  "settling_effect": {
+    "provenance": "diagnostic",
+    "scope": "all 6,000 bundled benchmark rows (energy checks: 64 evenly spaced rows); released checkpoint; diagnostic only, not a test of predictive benefit",
+    "environment": {
+      "python": "3.12.6",
+      "torch": "2.9.1+cpu",
+      "numpy": "2.2.6",
+      "platform": "Windows-11-10.0.26200-SP0",
+      "threads": 8
+    },
+    "rows": 6000,
+    "k_settle": 16,
+    "what_the_loop_does": "each step takes the gradient of the trained energy heads with respect to the belief and applies it through the untrained step-size and preconditioner networks",
+    "relative_belief_movement": {
+      "min": 0.0007099166978150606,
+      "median": 0.0008810163708403707,
+      "p99": 0.002514577703550458,
+      "max": 0.012363181449472904
+    },
+    "rows_with_any_prediction_change": 6000,
+    "prediction_change": {
+      "Om": {
+        "max_abs": 0.0009154081344604492,
+        "median_abs": 0.0002722889184951782,
+        "rows_changed": 5997
+      },
+      "s8": {
+        "max_abs": 0.004215717315673828,
+        "median_abs": 9.140372276306152e-05,
+        "rows_changed": 5998
+      },
+      "h": {
+        "max_abs": 0.0029605627059936523,
+        "median_abs": 0.0003336668014526367,
+        "rows_changed": 5999
+      },
+      "ns": {
+        "max_abs": 0.0018596053123474121,
+        "median_abs": 0.00030985474586486816,
+        "rows_changed": 6000
+      },
+      "Ob": {
+        "max_abs": 0.0005016550421714783,
+        "median_abs": 0.0001056138426065445,
+        "rows_changed": 6000
+      },
+      "w0": {
+        "max_abs": 0.0028533339500427246,
+        "median_abs": 0.00013750791549682617,
+        "rows_changed": 6000
+      },
+      "mv": {
+        "max_abs": 0.005199432373046875,
+        "median_abs": 0.000272996723651886,
+        "rows_changed": 6000
+      },
+      "wa": {
+        "max_abs": 0.0028302669525146484,
+        "median_abs": 0.00020503997802734375,
+        "rows_changed": 5999
+      }
+    },
+    "r2_varying_k0": {
+      "Om": 0.6889929699858026,
+      "s8": 0.7363458150752487,
+      "h": 0.47833969927709896,
+      "ns": 0.33287929884549994,
+      "Ob": 0.3375099020870499,
+      "w0": 0.6663897348884322,
+      "mv": 0.023144100782372834,
+      "wa": 0.17526891961281432
+    },
+    "r2_varying_k16": {
+      "Om": 0.68947836513872,
+      "s8": 0.7365948447183635,
+      "h": 0.47683168708215773,
+      "ns": 0.3362967471001064,
+      "Ob": 0.35331736732131125,
+      "w0": 0.6675902444814101,
+      "mv": 0.02331934162812932,
+      "wa": 0.17364535584163043
+    },
+    "r2_varying_difference": {
+      "Om": 0.00048539515291734503,
+      "s8": 0.00024902964311479536,
+      "h": -0.0015080121949412328,
+      "ns": 0.0034174482546064366,
+      "Ob": 0.015807465234261353,
+      "w0": 0.0012005095929779053,
+      "mv": 0.0001752408457564858,
+      "wa": -0.001623563771183889
+    },
+    "energy_checked_rows": 64,
+    "energy_gradient_norm_at_start": {
+      "norm_min": 0.06787755340337753,
+      "norm_median": 0.08490297198295593,
+      "norm_max": 0.11389536410570145
+    },
+    "first_step_update_relative_to_belief": {
+      "min": 5.129170313011855e-05,
+      "median": 6.442297308240086e-05,
+      "max": 8.451739267911762e-05
+    },
+    "energy_float32_distinct_values_at_start": 3,
+    "energy_float64_change_over_16_steps": {
+      "min": -0.0017236521234735847,
+      "median": -0.0010061243665404618,
+      "max": -0.0006628544069826603,
+      "fraction_negative": 1.0
+    },
+    "independent_check": {
+      "provenance": "diagnostic",
+      "source": "independent review, 13 September 2026: first 8 benchmark rows, torch 2.14.0+cpu",
+      "relative_belief_movement_range": [
+        0.0009770805481821299,
+        0.0011916420189663768
+      ],
+      "max_abs_prediction_change": {
+        "Om": 0.00030854344367980957,
+        "s8": 0.0007727146148681641,
+        "h": 7.37309455871582e-05,
+        "ns": 0.00011330842971801758,
+        "Ob": 2.2295862436294556e-05,
+        "w0": 0.00012284517288208008,
+        "mv": 6.005074828863144e-05,
+        "wa": 0.00013321638107299805
+      },
+      "exact_prediction_equality": false
+    },
+    "note": "The loop executes and changes the belief and every prediction slightly. This is not a test of predictive benefit: one benchmark, one checkpoint, no uncertainty on the differences, and no matched comparison."
   },
   "later_training_code_saved_log": {
     "provenance": "saved_log",

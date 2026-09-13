@@ -9,9 +9,11 @@ its initial values.**
 
 CosmUFR is an independent, synthetic-data prototype for cosmological parameter
 prediction. It was designed to refine its answer over several steps. In the
-released checkpoint that refinement does not operate, so what this repository
-demonstrates is a point predictor and an audit of why the intended mechanism
-never trained. Whether refinement would help is untested.
+released checkpoint the refinement loop runs, but the networks meant to learn how
+to refine were never trained, and the energy it descends was trained with an
+objective that is unbounded below. What this repository demonstrates is a point
+predictor and an audit of that training path. Whether refinement helps is
+untested.
 
 Every number below is labelled by where it comes from. **Reproduced** means
 regenerated from the released checkpoint and the bundled benchmark. **Saved
@@ -47,8 +49,8 @@ python -m cosmufr.reproduce          # regenerates the benchmark table and the d
 ```
 
 Two things the API will not do quietly: `result.sigmas` is a clamp floor and not
-an error bar, and `result.pk_recon` is a constant and not a reconstruction. Both
-are listed under limitations.
+an error bar, and `result.pk_recon` does not follow the input on benchmark spectra.
+Both are listed under limitations.
 
 [`examples/01_quickstart.ipynb`](examples/01_quickstart.ipynb) walks through it
 end to end.
@@ -125,9 +127,27 @@ proposal only when every refinement step is retained; the step-size and
 preconditioner networks receive no gradient in any configuration examined. A
 repair has not been attempted.
 
-**What the answers come from.** The eight parameters are computed by
-`param_head` (1.2% of parameters) from a belief that is a fixed random function
-of the input.
+**What the loop still does.** The refinement runs at inference. Each step takes
+the gradient of the trained energy heads and applies it through the untrained
+step-size and preconditioner networks, and `param_head` reads the result. So the
+belief it reads is not simply a random function of the input: it depends slightly on
+trained energy heads. Whether the model behaves like a random-feature predictor
+with a small learned correction is a hypothesis to test by ablation.
+
+<!-- table:settling_effect -->
+Diagnostic on all 6,000 benchmark rows (torch 2.9.1+cpu, CPU), comparing the released model with 0 and 16 refinement steps. The loop changes every prediction; the belief moves by a median 0.09% (largest 1.2%). Evaluated in float64 on 64 rows, the steps lower the energy on every row, by 6.6e-04 to 1.7e-03. **This is not a test of predictive benefit**: one benchmark, no uncertainty on the differences, no matched comparison.
+
+| Parameter | Largest change in prediction, 16 steps vs 0 | R² where it varies, 0 steps | R², 16 steps | Difference |
+|---|---:|---:|---:|---:|
+| Ω_m | 9.2e-04 | 0.689 | 0.689 | +0.0005 |
+| σ₈ | 4.2e-03 | 0.736 | 0.737 | +0.0002 |
+| h | 3.0e-03 | 0.478 | 0.477 | -0.0015 |
+| n_s | 1.9e-03 | 0.333 | 0.336 | +0.0034 |
+| Ω_b | 5.0e-04 | 0.338 | 0.353 | +0.0158 |
+| w₀ | 2.9e-03 | 0.666 | 0.668 | +0.0012 |
+| Σm_ν (eV) | 5.2e-03 | 0.023 | 0.023 | +0.0002 |
+| w_a | 2.8e-03 | 0.175 | 0.174 | -0.0016 |
+<!-- /table:settling_effect -->
 
 **The energy score has a second, separate problem.** Its training loss adds the
 mean energy to a contrastive term that depends only on energy differences, so
@@ -135,8 +155,11 @@ lowering every energy by the same constant lowers the loss one-for-one. A
 diagnostic shift of 1,000 lowered it by exactly 1,000. Run 4's logged energy loss
 fell from −479,869 at epoch 2 to −942,080 at epochs 36 to 40. That trajectory is
 consistent with the unbounded direction; the log does not show what produced the
-particular value. On six different benchmark spectra the energy is −926,537.375
-and changes by at most one float32 step over the sixteen refinement steps.
+particular value. The stored energy on benchmark spectra reads about −926,537 and
+barely changes in float32, but that is not evidence about the shape of the landscape: one
+float32 step at that magnitude is 0.0625, and an added constant changes the value
+without changing the gradient. In float64 the refinement lowers it on every row
+checked (table above).
 
 **Two notes on the evidence.** Every Linear bias is initialised to zero, so
 all-zero biases (which `cosmufr.weight_audit` reports) are a clue, not a proof:
@@ -289,8 +312,9 @@ no per-run score table in this repository for that reason.
 ## 3 · What I conclude
 
 **The architecture this project set out to test has not been tested.** The
-refinement did not operate in the released model, so nothing here is evidence
-for or against it. What exists is a checkable point predictor and a detailed
+refinement runs, but its update networks were never trained and its energy was
+trained with an unbounded objective, so nothing here is evidence for or against
+it. What exists is a checkable point predictor and a detailed
 account of why the intended mechanism did not train.
 
 **What it does today.** Returns eight parameters from a power spectrum in a few
@@ -298,7 +322,7 @@ hundred milliseconds on CPU. Recovers matter density and clustering amplitude
 with RMSE of about 0.027 and 0.028 on validation rows where they vary.
 Reproduces the bundled benchmark within 1e-5 in R².
 
-**What it does not do.** Report an uncertainty: the σ output is constant. Work on
+**What it does not do.** Report a validated uncertainty: the σ output sits at its clamp floor. Work on
 survey data: the input is an emulator spectrum with no window, shot noise, mask
 or galaxy bias. Recover neutrino mass. Support any claim about iterative
 refinement.
@@ -318,7 +342,8 @@ pursuing once it can train, or does a single-pass estimator reach the same place
 How much of the weakness on h, w₀ and w_a is a limit of what two noiseless
 spectra over this k range contain, and how much is training coverage? What should
 a refinement score be trained to do, given that the current objective is
-unbounded below?
+unbounded below? Does the model behave like a random-feature predictor with a small
+learned correction, or does the refinement matter? That needs an ablation.
 
 **Long-term aim, untested.** A fast inference step that makes expensive analyses
 cheaper to run. Nothing here demonstrates that it can be done or that it would
@@ -328,16 +353,18 @@ preserve the accuracy of standard methods.
 
 ## Limitations
 
-1. **The refinement core is at initialization.** The encoder, the belief proposal
-   and the refinement networks are bit-identical to Run 2's pre-training state,
-   and the training code that produced this checkpoint gives them no gradient.
-2. **The energy objective is unbounded below** along a constant shift, and on the
-   benchmark the energy is constant to float32 resolution across inputs and
-   refinement steps.
-3. **Reported uncertainties carry no information.** σ = 0.1 for six of eight
-   parameters on every benchmark input. Do not use them.
-4. **The P(k) reconstruction is a constant**, 2.6327 at every k and for every
-   input.
+1. **The refinement's update networks are at initialization, and its benefit is
+   untested.** The encoder, the belief proposal and the learned step-size and
+   preconditioner networks are bit-identical to Run 2's pre-training state, and
+   the training code that produced this checkpoint gives them no gradient. The
+   loop still runs and changes every benchmark prediction slightly.
+2. **The energy objective is unbounded below** along a constant shift. Its stored
+   value hides small changes in float32; it is not evidence either way about the
+   shape of the landscape.
+3. **Reported uncertainties are not validated.** σ = 0.1 for six of eight
+   parameters on every benchmark input. Do not use them as error bars.
+4. **The P(k) output does not follow the input** on the 6,000 benchmark rows: it
+   stays near 2.6327, varying by less than 1e-6 across k and 1e-4 across rows.
 5. **Neutrino mass is not recovered** (R² 0.011 where it varies, saved report),
    and its recovery differs sharply between two emulators.
 6. **It fails on the one hydrodynamic slice**, which also has a channel-order

@@ -10,8 +10,9 @@ energy. That refinement was the research claim.
 In September 2026 an audit found that in the released checkpoint the encoder,
 the belief proposal network and the settling core's own networks are
 bit-identical to Run 2's checkpoint saved before any optimizer step, and that
-the code that trained Run 4 passes them no gradient. The trained parts of the
-model are the read-out heads, which read a fixed random projection of the input.
+the code that trained Run 4 passes them no gradient. The settling loop still
+runs at inference, following the gradient of the trained energy heads, and
+changes the belief slightly; whether that helps is untested.
 That comparison and training-path diagnosis need historical checkpoints and
 training source that are not public; the functions here measure what can be
 measured from the released weights.
@@ -182,11 +183,12 @@ class SettlingReport:
             lines.append(f"  {lbl:<7}{a:>12.5f}{b:>12.5f}{drift:>12.2e}{pct:>12.3f}%")
         lines += [
             "",
-            "Interpretation: the settling loop runs, but it moves the belief by a",
-            "fraction of a percent and the energy changes by a couple of float32",
-            "resolution steps -- the smallest change representable at that",
-            "magnitude. The refinement does no measurable work. Its networks",
-            "are still at initialization (see compare_checkpoints).",
+            "Interpretation: the settling loop runs and moves the belief by a",
+            "fraction of a percent. The stored energy changes by at most a few",
+            "float32 steps at this magnitude, which hides small changes and says",
+            "nothing on its own about the gradient. Its step-size and",
+            "preconditioner networks are still at initialization (see",
+            "compare_checkpoints). Whether the movement helps is untested.",
         ]
         return "\n".join(lines)
 

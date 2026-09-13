@@ -65,16 +65,16 @@ class CosmUFRResult:
     sigmas_array : np.ndarray
         Same sigmas as a length-8 array. See the note on `sigmas`.
     pk_recon : np.ndarray
-        The GenerativeHead's output at the default 200-bin k-grid. NOT a
-        reconstruction: the head returns the same constant at every k, for
-        every input, and for a random belief vector.
+        The GenerativeHead's output at the default 200-bin k-grid. Not a usable
+        reconstruction: on the 6,000 benchmark rows it varies by less than 1e-6
+        across k and 1e-4 across rows.
     log_k : np.ndarray
         log(k) values where pk_recon is evaluated (length 200).
     energy_log : list[float]
         Settling energy at each of the 17 steps (initial + 16 GD updates). On
-        the released checkpoint this is flat to one float32 unit, and the same
-        value to float32 resolution across inputs, so there is nothing to
-        descend. See cosmufr.settling_report.
+        the released checkpoint the stored values sit near -9.3e5 and change by
+        about one float32 step, which hides smaller changes; it is not evidence
+        on its own about the gradient. See cosmufr.settling_report.
     """
     params:        Dict[str, float]
     sigmas:        Dict[str, float]

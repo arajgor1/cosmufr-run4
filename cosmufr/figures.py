@@ -93,8 +93,8 @@ def fig_settling_trajectory(report, figsize=(8, 6)):
     """
     Energy and parameter read-out across the 16 refinement steps.
 
-    On the released checkpoint both panels are flat. That is the honest result
-    and the figure is labelled to say so rather than being omitted.
+    On the released checkpoint both panels barely move. The figure is kept and
+    labelled rather than omitted; small movement is not the same as none.
     """
     import matplotlib.pyplot as plt
 
@@ -143,8 +143,8 @@ def fig_settling_trajectory(report, figsize=(8, 6)):
     fig.text(0.01, -0.02,
              f"Belief moves {report.belief_movement*100:.3f}% of its norm across "
              f"all 16 steps; cosine similarity {report.cosine_similarity:.6f}.\n"
-             "Both panels are flat. The refinement runs and does no measurable "
-             "work.",
+             "Both panels barely move. The refinement runs and changes the answer "
+             "slightly; whether that helps is untested.",
              fontsize=8, color=C_GREY)
     fig.tight_layout()
     return _style(fig, [ax1, ax2])
@@ -193,10 +193,9 @@ def fig_pk_reconstruction(k, pk_z0, pk_z047, pk_recon, log_k_recon=None,
     """
     Input spectra against the generative head's output.
 
-    This is not a reconstruction. The generative head returns the same constant
-    (log10 P = 2.6327) at every k, for every input spectrum, and even for a
-    random belief vector: measured variation is about 4e-7 across k and 1e-7
-    across inputs on benchmark spectra.
+    This is not a usable reconstruction. On the 6,000 benchmark rows the
+    generative head's output stays near log10 P = 2.6327, varying by less than
+    1e-6 across k and 1e-4 across rows.
 
     The figure is kept because the collapse is worth seeing.
     """
@@ -225,11 +224,11 @@ def fig_pk_reconstruction(k, pk_z0, pk_z047, pk_recon, log_k_recon=None,
     ax1.plot(k, pk_z047, color=C_SKY, linewidth=1.4, alpha=0.85,
              label="input, $z=0.47$")
     ax1.plot(k_recon, pk_recon, color=C_RED, linewidth=1.8, linestyle="--",
-             label=f"GenerativeHead output (constant, std over $k$ = {spread:.1e})")
+             label=f"GenerativeHead output (std over $k$ = {spread:.1e})")
     ax1.set_xscale("log")
     ax1.set_ylabel(r"$\log_{10} P(k)$", fontsize=9)
     ax1.legend(fontsize=8, frameon=False, loc="upper right")
-    ax1.set_title("The generative head returns a constant, not a reconstruction",
+    ax1.set_title("The generative head's output does not follow the input",
                   fontsize=11, pad=10)
 
     ax2.plot(k, resid, color=C_PURPLE, linewidth=1.4)
@@ -241,11 +240,9 @@ def fig_pk_reconstruction(k, pk_z0, pk_z047, pk_recon, log_k_recon=None,
                  xycoords="axes fraction", ha="right", fontsize=8.5)
 
     fig.text(0.01, -0.07,
-             "The head emits the same value at every $k$, for every input "
-             "spectrum, and for a random belief vector\n(variation ~2e-7 in "
-             "both directions). Its MSE is the variance of "
-             r"$\log_{10} P(k)$ about a constant,"
-             "\nwhich is what a predictor that ignores its input scores.",
+             "On the 6,000 benchmark rows the head's output varies by less than "
+             "1e-6 across $k$\nand 1e-4 across rows. It does not follow the input "
+             "spectrum.",
              fontsize=8, color=C_GREY)
     fig.tight_layout()
     return _style(fig, [ax1, ax2])

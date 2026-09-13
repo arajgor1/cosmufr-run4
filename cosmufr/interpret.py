@@ -72,8 +72,8 @@ def read_settling(report) -> Reading:
     out: Reading = []
     if not working:
         out.append(("bottom",
-                    "The model reached its answer immediately and then spent "
-                    "sixteen steps not changing it."))
+                    "The sixteen refinement steps changed this answer only "
+                    "slightly."))
         out.append(("body",
                     "This model was designed to think in stages: make a rough "
                     "guess about the universe, then sharpen it sixteen times "
@@ -83,21 +83,24 @@ def read_settling(report) -> Reading:
             out.append(("body",
                         "The top panel is the model's own score for how wrong "
                         "it currently thinks it is. It is supposed to fall as "
-                        "the model improves. Here it never moved at all, not "
-                        "even by the smallest amount the computer can store."))
+                        "the model improves. Stored in float32 at this size it "
+                        "shows no change, but that is a limit of the number "
+                        "format, not proof that nothing happened."))
         else:
             out.append(("body",
                         f"The top panel is the model's own score for how wrong "
                         f"it currently thinks it is, and it is supposed to fall "
                         f"as the model improves. Here it changed by the "
-                        f"smallest amount a number that size can store, which "
-                        f"is rounding rather than progress."))
+                        f"smallest amount a number that size can store, which is "
+                        f"too coarse to show whether it really fell."))
         out.append(("body",
-                    f"The bottom panel is the eight answers themselves while "
-                    f"it thinks. Flat again: the one that moved most was "
-                    f"{SHORT[worst]}, by {worst_pct:.2f}% of its range, which "
-                    f"would not change any conclusion. The answer at the end "
-                    f"is the answer it had at the start."))
+                    f"The bottom panel is the eight answers themselves across "
+                    f"the steps. The one that moved most was {SHORT[worst]}, by "
+                    f"{worst_pct:.2f}% of its range, which would not change any "
+                    f"conclusion. " + ("The answer at the end is identical to "
+                    "the answer at the start." if worst_pct == 0 else
+                    "The answer at the end is close to, but not the same as, "
+                    "the answer at the start.")))
         out.append(("body",
                     "What this changes: the numbers above are not invalidated, "
                     "but they are not coming from the part of the design that "
@@ -153,17 +156,18 @@ def read_pk(k, pk_z0, pk_z047, pk_recon, log_k=None,
         out.append(("body",
                     "Having read your data, the model is asked to draw it back "
                     "from memory. If it understood the input, the dashed line "
-                    "would follow the solid ones. It is a flat line: the model "
-                    "returns a single number for every scale, and the same "
-                    "number no matter which spectrum you give it. It is like "
-                    "asking someone to sketch a photograph they just studied "
-                    "and getting the same blank stroke every time."))
+                    "would follow the solid ones. It is a nearly flat line: the "
+                    "model returns almost the same number at every scale, and on "
+                    "benchmark spectra almost the same number whatever the input. "
+                    "It is like asking someone to sketch a photograph they just "
+                    "studied and getting the same blank stroke every time."))
         out.append(("body",
                     f"The panel underneath is the gap between your data and "
-                    f"that flat line. Because the line is constant, the gap is "
-                    f"just your own curve upside down, running from "
+                    f"that line. Because the line is nearly flat, the gap is "
+                    f"essentially your own curve upside down, running from "
                     f"{resid[0]:+.2f} at the largest scales to {resid[-1]:+.2f} "
-                    f"at the smallest. There is no information in it."))
+                    f"at the smallest. It shows your spectrum, not the model's "
+                    f"reading of it."))
         out.append(("body",
                     "What this changes: it does not prove the parameters above "
                     "are wrong. It does mean one of the two independent ways I "
@@ -400,11 +404,11 @@ def read_run(params, sigmas, truth=None, reference=None, pk_z0=None,
     if settling is not None and getattr(settling, "belief_movement", 1) * 100 < 1:
         out.append(("body",
                     "One thing to know before reading the figures below: the "
-                    "sixteen refinement steps did nothing on this run, as they "
-                    "do nothing on every run. The answer above is what the model "
-                    "had before it started thinking."))
+                    "sixteen refinement steps changed this answer only slightly, "
+                    "as they do on benchmark spectra, and whether they help at all "
+                    "has not been tested."))
     out.append(("body",
-                "The uncertainty column is not an uncertainty. It reports a "
-                "fixed number on every input."))
+                "The uncertainty column is not a validated uncertainty. On "
+                "benchmark inputs it reports the clamp floor for most parameters."))
     return out
 

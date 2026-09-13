@@ -71,9 +71,10 @@ This demo runs the real released checkpoint
 model computed.
 
 **Before you read the outputs:** an audit found that the belief-settling core
-this architecture is named for is still at its initial values in these weights,
-and the code that trained them passes it no gradient. What learned is the
-read-out heads, reading a fixed random projection. The **Audit** tab shows a
+this architecture is named for has its encoder, proposal and update networks
+still at their initial values, and the code that trained them passes them no
+gradient. The loop still runs, following trained energy heads, and changes each
+answer slightly; whether that helps is untested. The **Audit** tab shows a
 supporting clue; the README describes the direct evidence. The reported
 uncertainties are a clamp constant, not a prediction, and should not be used as
 error bars.
@@ -86,18 +87,18 @@ FOOTER = """
 
 1. `obs_encoder`, `belief_proposal` and `settling` are bit-identical to Run 2's
    pre-training checkpoint, and the training code gives them no gradient.
-2. Settling moves the belief by ~0.09% and its energy is flat to one float32
-   unit. It does no measurable work.
+2. Settling moves the belief by about 0.09% on benchmark spectra and changes
+   every prediction slightly. Whether that helps is untested.
 3. Every reported σ is the clamp floor (0.1) for six of eight parameters, on
    100% of inputs. Not error bars.
-3b. The generative head returns one constant at every k, for every input, and
-   even for a random belief vector. The "reconstruction" is not one.
+3b. The generative head's output does not follow the input: on the 6,000
+   benchmark rows it varies by less than 1e-6 across k and 1e-4 across rows.
 4. Σm_ν is not recovered: R² = 0.011 where it varies. The higher figure in
    older material was an artifact of Σm_ν being pinned at zero in most of the
    training corpus.
-5. The energy objective is unbounded below along a constant shift, and the
-   energy is constant across inputs. It is not a usable out-of-distribution
-   signal.
+5. The energy objective is unbounded below along a constant shift. Its stored
+   value has not been shown to mean anything, so it is not a usable
+   out-of-distribution signal.
 6. Two redshifts only. A linear baseline, but no ablation and no matched direct
    network.
 
@@ -289,7 +290,7 @@ with gr.Blocks(title="CosmUFR Run 4", theme=gr.themes.Soft()) as demo:
                     col_count=(5, "fixed"), wrap=True, interactive=False,
                 )
         with gr.Row():
-            pk_img = gr.Image(label="P(k): the generative head returns a constant", type="pil")
+            pk_img = gr.Image(label="P(k): the generative head's output", type="pil")
             settle_img = gr.Image(label="Settling trajectory", type="pil")
         js = gr.Code(label="Result JSON", language="json")
 

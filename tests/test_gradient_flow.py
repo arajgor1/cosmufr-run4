@@ -4,7 +4,7 @@ The test that would have caught this model's central defect on day one.
 CosmUFR Run 4 trained with its observation encoder, belief proposal network
 and settling core receiving no gradient: they are bit-identical to Run 2's
 checkpoint saved before any optimizer step. Nothing in the loss curves showed
-it: the read-out heads learned to read the frozen random projection well enough
+it: the read-out heads learned to read the output of untrained modules well enough
 that the headline metrics looked reasonable, and several auxiliary losses sat at
 constants that were read as convergence.
 
@@ -157,8 +157,8 @@ def test_encoder_is_frozen_in_the_released_checkpoint():
 
 
 @needs_ckpt
-def test_settling_does_not_move_the_belief():
-    """Records the measured no-op, so a real fix trips this test."""
+def test_settling_moves_the_belief_less_than_one_percent():
+    """Records the measured small movement, so a change in settling behaviour trips this test."""
     model = cosmufr.load_model(ckpt_path=CKPT)
     bench = cosmufr.load_benchmark()
     report = cosmufr.settling_report(model, bench.pk_z0[0], bench.pk_z047[0])
@@ -174,7 +174,7 @@ def test_settling_does_not_move_the_belief():
 
 @needs_ckpt
 def test_uncertainties_are_the_clamp_floor():
-    """Records that reported sigmas carry no information."""
+    """Records that reported sigmas sit at the clamp floor on benchmark inputs."""
     model = cosmufr.load_model(ckpt_path=CKPT)
     bench = cosmufr.load_benchmark()
 
@@ -193,15 +193,13 @@ def test_uncertainties_are_the_clamp_floor():
 
 
 @needs_ckpt
-def test_generative_head_returns_a_constant():
+def test_generative_head_output_barely_varies():
     """
-    Records that the k-continuous decoder collapsed.
+    Records that the k-continuous decoder does not follow its input.
 
     `GenerativeHead` is documented as reconstructing log10 P(k) at arbitrary k.
-    It does not: it returns the same value at every k, for every input, and for
-    a random belief vector. Its reported MSE of 0.687 is the variance of
-    log10 P(k) about a constant, i.e. the score of a predictor that ignores its
-    input entirely.
+    On the checked benchmark rows its output varies by less than 1e-4 across k
+    and across inputs, so it is not a usable reconstruction.
     """
     model = cosmufr.load_model(ckpt_path=CKPT)
     bench = cosmufr.load_benchmark()

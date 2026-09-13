@@ -868,7 +868,7 @@ def _hero_visual() -> str:
 def _hero() -> str:
     m = RESULTS["modules"]
     unchanged = m["unchanged_share_percent"]
-    head = m["by_module"]["param_head"]["share_percent"]
+    move = RESULTS["settling_effect"]["relative_belief_movement"]["median"] * 100
     om = RESULTS["validation_report"]["varying_only"]["Om"]["rmse"]
     return f"""<header class="hero">
 <canvas id="plexus"></canvas>
@@ -877,13 +877,14 @@ def _hero() -> str:
 <div>
 <div class="eyebrow"><span class="dot"></span>Run 4 &middot; research preview &middot; live model</div>
 <h1 class="display">A 136M-parameter model for cosmological inference &mdash;<br>
-<em>and the audit that found its core still at initialization.</em></h1>
+<em>and an audit of why its refinement did not train as designed.</em></h1>
 <p class="lede">CosmUFR predicts eight cosmological parameters from the matter
 power spectrum in one forward pass. It was designed to reach them by refining a
 belief over sixteen steps. In the released checkpoint the encoder, the belief
-proposal and the refinement networks are bit-identical to their state before
-training, and the code that trained it passes them no gradient, so the answers
-come from a read-out head on a fixed random projection of the input. This page
+proposal and the learned step-size and preconditioner networks are bit-identical to
+their state before training, and the code that trained it passes them no gradient.
+The loop still runs, following the gradient of trained energy heads, and changes
+each answer slightly; whether that helps has not been tested. This page
 covers what I did, what I observed, what I conclude, the model running live, and
 the code. Each number is labelled as reproduced, taken from a saved report, or
 from a diagnostic run.</p>
@@ -897,7 +898,7 @@ pointed at survey data.</p>
 </div>
 <div class="metrics">
   <div><div class="v">{unchanged:.1f}%</div><div class="k">of parameters still at initialization</div></div>
-  <div><div class="v">{head:.1f}%</div><div class="k">compute the reported parameters</div></div>
+  <div><div class="v">{move:.2f}%</div><div class="k">median belief change from the 16 refinement steps</div></div>
   <div><div class="v">{om:.3f}</div><div class="k">RMSE on matter density, validation report</div></div>
   <div><div class="v">6,000</div><div class="k">benchmark rows, reproduced within 1e-5</div></div>
 </div>
@@ -1001,7 +1002,7 @@ grid is the contract: anything you feed the model has to be on it.</p></div>
 <div class="subhead plain"><h3 class="display">The examples in the demo</h3>
 <p class="muted sub-lede">The dropdown is not a set of toy inputs. Each entry is
 the spectrum a published cosmology code produces for one specific set of
-parameters, held out of training, with those parameters recorded. The label shows
+parameters, taken from the held-out split, with those parameters recorded. The label shows
 the suite it came from and three of its true values, so you can see before you
 run it what the right answer is.</p></div>
 <p class="dim" style="max-width:66ch">They are simulation output, not
@@ -1127,8 +1128,8 @@ def _conclusion() -> str:
 <div class="panel accent">
 <p class="muted" style="margin:0 0 14px"><span class="lead-in">In one
 paragraph.</span> The architecture this project set out to test has not been
-tested. Its refinement did not operate in the released model, so nothing here is
-evidence for or against the idea. What exists is a checkable point predictor: it
+tested. Its refinement runs, but the parts meant to learn how to refine were never
+trained, so nothing here is evidence for or against the idea. What exists is a checkable point predictor: it
 recovers two of eight parameters on emulator spectra, is beaten by a linear fit on
 one of them, and fails on the one hydrodynamic slice it is tested against. That is
 a starting point, not a result.</p>
@@ -1147,13 +1148,14 @@ about what the model was doing.</p>
       <li>Recovers matter density and clustering amplitude with RMSE of about
           {om:.3f} and {s8:.3f} on validation rows where they vary.</li>
       <li>Reproduces the bundled 6,000-row benchmark within 1e-5 in R&sup2;.</li>
-      <li>Reports its own degenerate outputs on every run.</li>
+      <li>Reports its own diagnostics on every run.</li>
     </ul>
   </div>
   <div class="vd bad">
     <h4>What it does not do</h4>
     <ul>
-      <li>Report an uncertainty. The &sigma; output is a constant.</li>
+      <li>Report a validated uncertainty. The &sigma; output sits at its clamp
+          floor for six of eight parameters on every benchmark input.</li>
       <li>Work on survey data. The input is an emulator spectrum with no window,
           shot noise, mask, galaxy bias or noise model.</li>
       <li>Recover neutrino mass: R&sup2; {mv:.3f} where it varies.</li>
@@ -1189,7 +1191,7 @@ tell which answer is right.</p></div>
     <h4>Is refining an answer worth doing at all?</h4>
     <p>The design assumes a model that sharpens its answer over several steps can
     spend more effort on a hard observation than an easy one. That has not been
-    tested, because the mechanism never operated. A single pass may reach the same
+    tested, because the mechanism was never trained as designed. A single pass may reach the same
     place for a fraction of the machinery, and nothing here argues otherwise.</p>
   </div>
   <div class="op">
@@ -1235,7 +1237,7 @@ def _roadmap() -> str:
     every rung above 00 depends on modules that did not train, so each is stated
     as a design intention rather than a property of this model.
     """
-    cards = """<div class="step-row bad"><div class="sn">00</div><div class="sc"><div class="st-head"><h4>Make the architecture actually train</h4><span class="pill-bad">blocked, and first</span></div><p class="dim" style="margin:0 0 8px">the defect</p><p class="muted" style="margin:0">Not in the original plan; the audit put it here. In the released model the encoder, proposal and refinement networks never trained, and the energy objective is unbounded below. Every rung above rests on this one. The diagnosis of what the training code reaches is done; the repair is not.</p></div></div><div class="step-row ok"><div class="sn">01</div><div class="sc"><div class="st-head"><h4>A working inference path</h4><span class="pill-ok">done</span></div><p class="dim" style="margin:0 0 8px">shipped</p><p class="muted" style="margin:0">One observable, eight parameters, a single forward pass, and a benchmark that reproduces. It recovers matter density and clustering amplitude on emulator spectra and does not recover the rest.</p></div></div><div class="step-row next"><div class="sn">02</div><div class="sc"><div class="st-head"><h4>Training data with hydrodynamic physics</h4><span class="pill-next">next</span></div><p class="dim" style="margin:0 0 8px">the constraint: mostly gravity-only emulator data</p><p class="muted" style="margin:0">Most of the training set has no gas, feedback or AGN physics, and the model fails on the one hydrodynamic slice it is tested against. CAMELS is one candidate source. More realistic training data would not by itself make any score interpretable as new physics.</p></div></div><div class="step-row later"><div class="sn">03</div><div class="sc"><div class="st-head"><h4>Parameters chosen at runtime</h4><span class="pill-later">design intent</span></div><p class="dim" style="margin:0 0 8px">the constraint: a fixed output list</p><p class="muted" style="margin:0">The output is eight fixed parameters with compiled-in ranges. The intention is a read-out that takes a parameter specification at runtime. Whether the belief state would carry that information is untested, since the modules that build it did not train.</p></div></div><div class="step-row blocked"><div class="sn">3B</div><div class="sc"><div class="st-head"><h4>Distributions, not point estimates</h4><span class="pill-blocked">blocked</span></div><p class="dim" style="margin:0 0 8px">the constraint: no usable uncertainty</p><p class="muted" style="margin:0">A posterior needs a stated observation model, noise and prior, and calibration checks. A density model trained against a network whose &sigma; is a constant would learn nothing useful, so this waits on the rungs below.</p></div></div><div class="step-row later"><div class="sn">04</div><div class="sc"><div class="st-head"><h4>More than one instrument</h4><span class="pill-later">design intent</span></div><p class="dim" style="margin:0 0 8px">the constraint: one observable</p><p class="muted" style="margin:0">The intention is a separate encoder per observable, each updating a shared belief. Nothing here shows a belief state can be shared that way; the encoder that would feed it never trained.</p></div></div><div class="step-row later"><div class="sn">05</div><div class="sc"><div class="st-head"><h4>Anomaly as a research direction</h4><span class="pill-later">not built</span></div><p class="dim" style="margin:0 0 8px">the constraint: you must know what to look for</p><p class="muted" style="margin:0">The idea is that an energy left high after refinement could point at scales the model cannot explain. The energy here is constant and its objective unbounded below, so no such signal exists. It would need calibrated false-alarm rates on injected signals long before anyone trusted it on sky data.</p></div></div>"""
+    cards = """<div class="step-row bad"><div class="sn">00</div><div class="sc"><div class="st-head"><h4>Make the architecture actually train</h4><span class="pill-bad">blocked, and first</span></div><p class="dim" style="margin:0 0 8px">the defect</p><p class="muted" style="margin:0">Not in the original plan; the audit put it here. In the released model the encoder, proposal and refinement networks never trained, and the energy objective is unbounded below. Every rung above rests on this one. The diagnosis of what the training code reaches is done; the repair is not.</p></div></div><div class="step-row ok"><div class="sn">01</div><div class="sc"><div class="st-head"><h4>A working inference path</h4><span class="pill-ok">done</span></div><p class="dim" style="margin:0 0 8px">shipped</p><p class="muted" style="margin:0">One observable, eight parameters, a single forward pass, and a benchmark that reproduces. It recovers matter density and clustering amplitude on emulator spectra and does not recover the rest.</p></div></div><div class="step-row next"><div class="sn">02</div><div class="sc"><div class="st-head"><h4>Training data with hydrodynamic physics</h4><span class="pill-next">next</span></div><p class="dim" style="margin:0 0 8px">the constraint: mostly gravity-only emulator data</p><p class="muted" style="margin:0">Most of the training set has no gas, feedback or AGN physics, and the model fails on the one hydrodynamic slice it is tested against. CAMELS is one candidate source. More realistic training data would not by itself make any score interpretable as new physics.</p></div></div><div class="step-row later"><div class="sn">03</div><div class="sc"><div class="st-head"><h4>Parameters chosen at runtime</h4><span class="pill-later">design intent</span></div><p class="dim" style="margin:0 0 8px">the constraint: a fixed output list</p><p class="muted" style="margin:0">The output is eight fixed parameters with compiled-in ranges. The intention is a read-out that takes a parameter specification at runtime. Whether the belief state would carry that information is untested, since the modules that build it did not train.</p></div></div><div class="step-row blocked"><div class="sn">3B</div><div class="sc"><div class="st-head"><h4>Distributions, not point estimates</h4><span class="pill-blocked">blocked</span></div><p class="dim" style="margin:0 0 8px">the constraint: no usable uncertainty</p><p class="muted" style="margin:0">A posterior needs a stated observation model, noise and prior, and calibration checks. The current &sigma; output sits at its clamp floor and has not been validated, so it is no starting point; a distributional method would need its own design and calibration.</p></div></div><div class="step-row later"><div class="sn">04</div><div class="sc"><div class="st-head"><h4>More than one instrument</h4><span class="pill-later">design intent</span></div><p class="dim" style="margin:0 0 8px">the constraint: one observable</p><p class="muted" style="margin:0">The intention is a separate encoder per observable, each updating a shared belief. Nothing here shows a belief state can be shared that way; the encoder that would feed it never trained.</p></div></div><div class="step-row later"><div class="sn">05</div><div class="sc"><div class="st-head"><h4>Anomaly as a research direction</h4><span class="pill-later">not built</span></div><p class="dim" style="margin:0 0 8px">the constraint: you must know what to look for</p><p class="muted" style="margin:0">The idea is that an energy left high after refinement could point at scales the model cannot explain. The energy's training objective is unbounded below and its absolute value has not been shown to mean anything, so no such signal has been established. It would need calibrated false-alarm rates on injected signals long before anyone trusted it on sky data.</p></div></div>"""
     return f"""<section id="roadmap"><div class="wrap">
 {_shead("08", "Where it goes", "Each step removes one constraint.",
         "The ladder below is the design plan for the model, stated as intentions. "
@@ -1862,9 +1864,9 @@ MODULE_ROLE = {
 
 GROUP_OF = {
     "obs_encoder": "unchanged", "belief_proposal": "unchanged", "settling": "unchanged",
-    "obs_energy_head": "degenerate", "dyn_energy_head": "degenerate",
-    "constraint_head": "degenerate", "gen_head": "degenerate", "unc_head": "degenerate",
-    "param_head": "works",
+    "obs_energy_head": "energy", "dyn_energy_head": "energy", "constraint_head": "energy",
+    "gen_head": "flat_output", "unc_head": "flat_output",
+    "param_head": "readout",
 }
 
 GROUP_COPY = {
@@ -1875,25 +1877,34 @@ GROUP_COPY = {
         "the code that trained Run 4 the refinement loop detaches the belief at "
         "every step and computes its step size and preconditioner without "
         "gradients, so the training loss never reaches these modules."),
-    "degenerate": (
-        "Changed, and their outputs carry no information",
+    "energy": (
+        "Trained, and followed by the refinement loop",
         "warn",
-        "These received gradients and changed. What they produce does not vary "
-        "usefully with the input: the energy is the same to float32 resolution "
-        "across spectra, the redrawn spectrum is one constant at every scale, and "
-        "the reported &sigma; sits at its clamp floor."),
-    "works": (
-        "Changed, and produces the answers",
+        "These define the energy the loop descends. They trained, with an "
+        "objective that is unbounded below. At inference each refinement step "
+        "follows their gradient: across the benchmark the belief moves by a median "
+        "{move}% and every prediction changes slightly. Whether that helps has not "
+        "been tested."),
+    "flat_output": (
+        "Trained, with outputs that show no input dependence on the benchmark",
+        "warn",
+        "The redrawn spectrum varies by at most {recon_k} across scales and "
+        "{recon_rows} across all 6,000 benchmark rows, and the reported &sigma; sits "
+        "at its clamp floor for six of eight parameters on every benchmark input."),
+    "readout": (
+        "Trained, and computes the reported parameters",
         "good",
-        "The eight reported parameters are computed here, from a belief that is a "
-        "fixed random function of the input because everything upstream of it is "
-        "unchanged. It still recovers matter density and clustering amplitude."),
+        "The eight parameters are read from the refined belief. That belief comes from "
+        "untrained encoder and proposal networks plus a small update driven by the "
+        "trained energy heads; whether the model behaves like a random-feature "
+        "predictor is a hypothesis to test by ablation. It recovers matter density "
+        "and clustering amplitude."),
 }
 
 
 def _module_groups():
     """Group modules by the audit's measurements; the rest is listed under the table."""
-    out = {"unchanged": [], "degenerate": [], "works": [], "other": []}
+    out = {"unchanged": [], "energy": [], "flat_output": [], "readout": [], "other": []}
     for name, e in RESULTS["modules"]["by_module"].items():
         out[GROUP_OF.get(name, "other")].append(
             (name, MODULE_ROLE.get(name, ""), e["share_percent"]))
@@ -1909,11 +1920,17 @@ def _outcome_table() -> str:
     """The three outcomes, with what each part is for and how big it is."""
     groups = _module_groups()
     body = ""
-    for key in ("unchanged", "degenerate", "works"):
+    se = RESULTS["settling_effect"]
+    rec = RESULTS["reconstruction"]
+    values = {"move": f'{se["relative_belief_movement"]["median"] * 100:.2f}',
+              "recon_k": f'{rec["max_std_across_k"]:.0e}',
+              "recon_rows": f'{rec["max_std_across_rows"]:.0e}'}
+    for key in ("unchanged", "energy", "flat_output", "readout"):
         rows = groups[key]
         if not rows:
             continue
         title, tone, gloss = GROUP_COPY[key]
+        gloss = gloss.format(**values)
         share = sum(sh for _, _, sh in rows)
         cells = "".join(
             f'<tr><td class="dim">{html.escape(job)}</td>'
@@ -1948,6 +1965,10 @@ def _audit() -> str:
     traj = RESULTS["energy"]["run4_training_log"]["trajectory"]
     e_first, e_last = traj[0], traj[-1]
     bench_e = list(RESULTS["energy"]["benchmark_energy_values"]["rows"].values())
+    se = RESULTS["settling_effect"]
+    de = se["energy_float64_change_over_16_steps"]
+    top = max(PARAM_LABELS, key=lambda l: se["prediction_change"][l]["max_abs"])
+    d_r2 = [v for v in se["r2_varying_difference"].values() if v is not None]
 
     def ident(n):
         x = by[n]["run2_initial_vs_run4"]
@@ -1970,10 +1991,11 @@ def _audit() -> str:
 <p class="muted" style="margin:0 0 12px"><span class="lead-in">The finding in one
 paragraph.</span> The idea this model is built on is that it reaches its answer
 gradually: read the spectrum, form a rough guess about the universe, then sharpen
-that guess sixteen times. In the released checkpoint the modules meant to do that
-are bit-identical to their state before training, and the code that trained it
-never passes them a gradient. The eight parameters are computed by a small
-read-out head from a fixed random function of the input.</p>
+that guess sixteen times. In the released checkpoint the encoder, the proposal and
+the learned step-size and preconditioner networks are bit-identical to their state
+before training, and the code that trained it never passes them a gradient. The
+loop still runs: it follows the gradient of trained energy heads and changes each
+answer slightly. Whether that helps has not been tested.</p>
 <p class="muted" style="margin:0">Most of the other parameters did change during
 training, which is why this was not visible in the loss curves.</p>
 </div>
@@ -2002,6 +2024,17 @@ and the proposal only when every refinement step is retained
 {reach("settling", "current_code_kbp16")}. In a saved log from a later smoke run
 with that code, the encoder's median gradient was {later["encoder"]:.1e} against
 {later["param_head"]:.1f} for the read-out head.</p>
+<p class="muted"><span class="lead-in">What the loop still does.</span> At
+inference the refinement runs. Each step takes the gradient of the trained energy
+heads and applies it through the untrained step-size and preconditioner networks.
+Across the {se["rows"]:,} benchmark rows this moves the belief by a median
+{se["relative_belief_movement"]["median"] * 100:.2f}% (largest
+{se["relative_belief_movement"]["max"] * 100:.1f}%) and changes every prediction a
+little; the largest change is {se["prediction_change"][top]["max_abs"]:.1e} in the
+{PARAM_MEANING[top][0].lower()}. R&sup2; where each parameter varies moves by
+between {min(d_r2):+.4f} and {max(d_r2):+.4f} between 0 and 16 steps. That is one
+benchmark with no uncertainty attached: it shows the loop is not inert, not that it
+helps.</p>
 <p class="muted"><span class="lead-in">A clue, not a proof.</span> Every Linear
 bias is initialised to zero, and the figure below counts modules whose biases are
 all still zero. That is consistent with no update, but <code>halo_head</code> also
@@ -2016,10 +2049,14 @@ energy by the same constant therefore lowers the loss one-for-one: a diagnostic
 shift of 1,000 changed it by {shift:,.1f}. Run 4's logged energy loss went from
 {e_first["train_L_energy"]:,.0f} at epoch {e_first["epoch"]} to
 {e_last["train_L_energy"]:,.0f} by epoch {e_last["epoch"]}, and on six different
-benchmark spectra the energy is {bench_e[0]:,.3f} to within one float32 step. That
-is consistent with the unbounded direction; the log does not show which term
-produced the value. Reconnecting the gradient path alone would leave this in
-place.</p>
+benchmark spectra the stored energy reads {bench_e[0]:,.3f} to within one float32
+step. That says little about flatness: at this magnitude one float32 step is
+0.0625, and an added constant changes the value without changing the gradient.
+Evaluated in float64, the sixteen steps lower the energy on every one of
+{se["energy_checked_rows"]} checked rows, by {abs(de["max"]):.1e} to
+{abs(de["min"]):.1e}. The logged trajectory is consistent with the unbounded
+direction; the log does not show which term produced the value. Reconnecting the
+gradient path alone would leave this in place.</p>
 
 <div class="panel accent">
 <p class="muted" style="margin:0 0 12px"><span class="lead-in">What I do not
@@ -2208,20 +2245,26 @@ limit of the training data.</p>
 
 def _limits() -> str:
     items = [
-        ("The refinement core is at initialization.",
-         "The encoder, the belief proposal and the refinement networks are "
-         "bit-identical to Run 2's pre-training state, and the code that trained "
-         "this checkpoint gives them no gradient. See what I observed, above."),
+        ("The refinement's update networks are at initialization.",
+         "The encoder, the belief proposal and the learned step-size and "
+         "preconditioner networks are bit-identical to Run 2's pre-training state, "
+         "and the code that trained this checkpoint gives them no gradient. See what "
+         "I observed, above."),
+        ("The refinement runs, but its benefit is untested.",
+         "It changes the belief and every benchmark prediction slightly; nothing "
+         "here shows whether those changes help."),
         ("The energy objective is unbounded below.",
-         "It lowers one-for-one under a constant downward shift of every energy, and "
-         "on the benchmark the energy is constant to float32 resolution across "
-         "inputs and refinement steps."),
-        ("Reported uncertainties carry no information.",
+         "It lowers one-for-one under a constant downward shift of every energy. "
+         "The stored value, about &minus;926,537, hides changes smaller than a "
+         "float32 step; in float64 the refinement lowers it slightly on every "
+         "benchmark row checked."),
+        ("Reported uncertainties are not validated.",
          "&sigma; = 0.1 for six of eight parameters on every benchmark input, "
-         "because the uncertainty head sits at its clamp floor. Do not use them."),
-        ("The P(k) reconstruction is a constant.",
-         "The generative head returns the same value at every scale and for every "
-         "input."),
+         "because the uncertainty head sits at its clamp floor. Do not use them as "
+         "error bars."),
+        ("The P(k) output does not follow the input on benchmark spectra.",
+         "Across all 6,000 benchmark rows the generative head's output stays near "
+         "2.6327, varying by less than 1e-6 across scales and 1e-4 across rows."),
         ("Neutrino mass is not recovered.",
          "R&sup2; = 0.011 on validation rows where it varies, and recovery differs "
          "sharply between two emulators."),
@@ -2308,8 +2351,8 @@ def _full(demo_inner: str = "", selected=None) -> str:
     conclude = _chapter(
         "03", "What I conclude", "A working baseline, and an untested idea.",
         "The interesting claim has not been tested, because the mechanism that "
-        "would test it did not operate. What exists is a checkable starting "
-        "point with its faults named.",
+        "would test it was never trained as designed. What exists is a checkable "
+        "starting point with its faults named.",
         _conclusion(),
         _sub(_roadmap(), "The longer plan, one constraint at a time"),
         _sub(_limits(), "Everything known to be wrong with this"))

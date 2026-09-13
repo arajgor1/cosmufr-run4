@@ -24,21 +24,23 @@ Checking the model's honesty
 
 Known defects, stated up front
 ------------------------------
-1. The observation encoder, the belief proposal network and the settling core
-   are still at initialization in this checkpoint, and the training code that
-   produced it passes them no gradient. The read-out heads read a fixed random
-   projection. `weight_audit()` shows a supporting clue (all-zero biases).
-2. Settling moves the belief by ~0.1% and its energy is flat to float32
-   resolution. `settling_report()` shows this.
-3. The uncertainty head is pinned at its clamp floor for most parameters, so
-   `result.sigmas` is a constant, not a prediction. Do not use it as an error
-   bar. `uncertainty_audit()` shows this.
+1. The observation encoder, the belief proposal network and the settling core's
+   step-size and preconditioner networks are still at initialization in this
+   checkpoint, and the training code that produced it passes them no gradient.
+   `weight_audit()` shows a supporting clue (all-zero biases).
+2. Settling still runs, following the gradient of trained energy heads, and moves
+   the belief by ~0.1% on benchmark spectra. Whether that helps is untested. The
+   stored energy barely changes in float32, which is not evidence about the shape
+   of the landscape. `settling_report()` shows the movement.
+3. The uncertainty head is pinned at its clamp floor for most parameters on
+   benchmark inputs, so `result.sigmas` is not a validated uncertainty. Do not use
+   it as an error bar. `uncertainty_audit()` shows this.
 4. m_nu recovery is R² ≈ 0.01 when measured only where m_nu varies. The higher
    number in older material was an artifact of m_nu being pinned at zero
    throughout most of the training corpus.
-5. The GenerativeHead collapsed: `result.pk_recon` is the same constant at
-   every k, for every input, and for a random belief. It is not a
-   reconstruction.
+5. The GenerativeHead's output does not follow the input: on the 6,000
+   benchmark rows `result.pk_recon` varies by less than 1e-6 across k and 1e-4
+   across rows. It is not a usable reconstruction.
 
 See README.md and MODEL_CARD.md for the full picture.
 """

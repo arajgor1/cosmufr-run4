@@ -82,8 +82,11 @@ def main() -> int:
             "results__v10__b200-b4096-run4-20260414_031247__training_results.json",
         "honest_eval": ROOT / "reports" / "honest_eval.json",
         "ridge_baseline": ROOT / "reports" / "ridge_baseline.json",
+        "settling_k0_k16": mw / "evidence" / "settling_k0_k16_benchmark.json",
+        "independent_k0_k16": mw.parent / "Worker_Review_Evidence" / "independent_K0_K16_check.json",
     }
     d = {k: _load(p) for k, p in sources.items()}
+    sk, ik = d["settling_k0_k16"], d["independent_k0_k16"]
     ref, honest, ridge = d["reference_metrics"], d["honest_eval"], d["ridge_baseline"]
 
     # ── module accounting from the Run 4 revision's optimizer membership ────
@@ -252,10 +255,46 @@ def main() -> int:
         },
 
         "reconstruction": {
-            "provenance": "reproduced",
-            "value": ref["diagnostics"]["reconstruction_value_example"],
-            "std_across_k": ref["diagnostics"]["reconstruction_std_across_k"],
-            "std_across_inputs": ref["diagnostics"]["reconstruction_std_across_inputs"],
+            "provenance": "diagnostic",
+            "scope": "generative head output on all 6,000 benchmark rows at the default 16 steps",
+            "environment": sk["environment"],
+            "rows": sk["reconstruction_k16"]["rows"],
+            "value_min": sk["reconstruction_k16"]["min"],
+            "value_max": sk["reconstruction_k16"]["max"],
+            "max_std_across_k": sk["reconstruction_k16"]["max_std_across_k"],
+            "max_std_across_rows": sk["reconstruction_k16"]["max_std_across_rows"],
+        },
+
+        "settling_effect": {
+            "provenance": "diagnostic",
+            "scope": sk["scope"],
+            "environment": sk["environment"],
+            "rows": 6000,
+            "k_settle": sk["k_settle_default"],
+            "what_the_loop_does": ("each step takes the gradient of the trained energy heads with respect to "
+                                   "the belief and applies it through the untrained step-size and "
+                                   "preconditioner networks"),
+            "relative_belief_movement": sk["relative_belief_movement_k16"],
+            "rows_with_any_prediction_change": sk["rows_with_any_prediction_change"],
+            "prediction_change": sk["prediction_change_k16_minus_k0"],
+            "r2_varying_k0": {p: sk["scores_k0"][p]["r2_varying"] for p in PARAMS},
+            "r2_varying_k16": {p: sk["scores_k16"][p]["r2_varying"] for p in PARAMS},
+            "r2_varying_difference": {p: sk["score_difference_k16_minus_k0"][p]["r2_varying"] for p in PARAMS},
+            "energy_checked_rows": 64,
+            "energy_gradient_norm_at_start": sk["energy_gradient_at_b_hat_float32"],
+            "first_step_update_relative_to_belief": sk["first_step_update_relative_to_belief"],
+            "energy_float32_distinct_values_at_start": sk["energy_float32_at_b_hat"]["unique_values"],
+            "energy_float64_change_over_16_steps": sk["energy_float64_change_b_star_minus_b_hat"],
+            "independent_check": {
+                "provenance": "diagnostic",
+                "source": "independent review, 13 September 2026: first 8 benchmark rows, torch " + ik["torch"],
+                "relative_belief_movement_range": [min(ik["relative_belief_movement"]), max(ik["relative_belief_movement"])],
+                "max_abs_prediction_change": dict(zip(PARAMS, ik["max_abs_prediction_change_by_parameter"])),
+                "exact_prediction_equality": ik["exact_prediction_equality"],
+            },
+            "note": ("The loop executes and changes the belief and every prediction slightly. This is not a "
+                     "test of predictive benefit: one benchmark, one checkpoint, no uncertainty on the "
+                     "differences, and no matched comparison."),
         },
 
         "later_training_code_saved_log": {

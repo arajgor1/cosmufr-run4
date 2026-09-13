@@ -15,14 +15,14 @@ FIGURE_NOTES = {
                   "parameters read off the belief at every step.",
         "means": "This is the figure the architecture exists for. The model is "
                  "supposed to refine its belief by descending a learned energy. "
-                 "Both panels are flat. The top panel is drawn in units of "
-                 "float32 resolution: a trace inside the shaded band is not a "
-                 "small descent, it is a change too small for the number to "
-                 "represent. The refinement runs and does nothing.",
-        "why": "The energy is the same to float32 resolution across inputs, so "
-               "there is nothing to descend, and the networks that set the step "
-               "size and preconditioner receive no gradient in any version of "
-               "the training code examined.",
+                 "Both panels barely move. The top panel is drawn in units of "
+                 "float32 resolution: a trace inside the shaded band is a change "
+                 "too small for the stored number to show, which is not the same "
+                 "as no change. The refinement runs and changes the answer "
+                 "slightly; whether that helps is untested.",
+        "why": "The networks that set the step size and preconditioner receive no "
+               "gradient in any version of the training code examined, and the "
+               "energy was trained with an objective that is unbounded below.",
     },
     "pk": {
         "title": "Power spectrum",
@@ -30,11 +30,11 @@ FIGURE_NOTES = {
                  "k bins from 0.1 to 4.5 h/Mpc.",
         "output": "The GenerativeHead's attempt to reconstruct log10 P(k), "
                   "overlaid, with the residual below.",
-        "means": "The dashed line is flat. The head returns the same number at "
-                 "every k, for every input spectrum, and for a random belief "
-                 "vector. It is not reconstructing anything.",
-        "why": "The head trained, unlike the encoder, but it converged to "
-               "emitting a constant rather than a function of the belief.",
+        "means": "The dashed line is nearly flat. On the 6,000 benchmark rows the "
+                 "head's output varies by less than 1e-6 across k and 1e-4 across "
+                 "rows, so it does not follow the input spectrum.",
+        "why": "The head trained, unlike the encoder, but its output on benchmark "
+               "spectra shows no useful dependence on the belief.",
     },
     "weight_audit": {
         "title": "Linear biases still at zero, by module",
