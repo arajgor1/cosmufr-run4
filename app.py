@@ -70,11 +70,11 @@ This demo runs the real released checkpoint
 (`sha256 5db09d4f…`), not a mock. Every number below comes from a tensor the
 model computed.
 
-**Before you read the outputs:** an audit of these weights found that the
-belief-settling core this architecture is named for never received a gradient
-during training. The encoder, the belief proposal network and the settling core
-sit at their initialization; what learned is the read-out heads, reading a fixed
-random projection. The **Audit** tab shows the evidence. The reported
+**Before you read the outputs:** an audit found that the belief-settling core
+this architecture is named for is still at its initial values in these weights,
+and the code that trained them passes it no gradient. What learned is the
+read-out heads, reading a fixed random projection. The **Audit** tab shows a
+supporting clue; the README describes the direct evidence. The reported
 uncertainties are a clamp constant, not a prediction, and should not be used as
 error bars.
 """
@@ -84,23 +84,24 @@ FOOTER = """
 
 ### Known defects, in full
 
-1. `obs_encoder`, `belief_proposal` and `settling` never trained: 84 Linear
-   biases are still bit-exactly zero after 40 epochs.
+1. `obs_encoder`, `belief_proposal` and `settling` are bit-identical to Run 2's
+   pre-training checkpoint, and the training code gives them no gradient.
 2. Settling moves the belief by ~0.09% and its energy is flat to one float32
    unit. It does no measurable work.
 3. Every reported σ is the clamp floor (0.1) for six of eight parameters, on
    100% of inputs. Not error bars.
 3b. The generative head returns one constant at every k, for every input, and
-   even for a random belief vector. The "reconstruction" is not one, and its
-   MSE of 0.687 is just the variance of log10 P(k) about a constant.
+   even for a random belief vector. The "reconstruction" is not one.
 4. Σm_ν is not recovered: R² = 0.011 where it varies. The higher figure in
    older material was an artifact of Σm_ν being pinned at zero in most of the
    training corpus.
-5. The energy subsystem diverged; `E_con` is ~−4.6e5 and is not a usable
-   out-of-distribution signal.
-6. Two redshifts only. No baseline, no ablation.
+5. The energy objective is unbounded below along a constant shift, and the
+   energy is constant across inputs. It is not a usable out-of-distribution
+   signal.
+6. Two redshifts only. A linear baseline, but no ablation and no matched direct
+   network.
 
-An active research programme, released open under MIT. Code, benchmark
+Released open under MIT. Code, benchmark
 and full report: [github.com/arajgor1/cosmufr-run4](https://github.com/arajgor1/cosmufr-run4)
 """
 
@@ -297,12 +298,12 @@ with gr.Blocks(title="CosmUFR Run 4", theme=gr.themes.Soft()) as demo:
 
     with gr.Tab("Audit — start here"):
         gr.Markdown(
-            "### The belief-settling core never trained\n"
-            "A `Linear` bias that has taken even one optimizer step essentially "
-            "never returns to exactly `0.0`. Eighty-four of them are still "
-            "bit-exactly zero after forty epochs of training."
+            "### The belief-settling core is still at initialization\n"
+            "Every `Linear` bias starts at exactly `0.0`, and eighty-four of them "
+            "still are. That is a clue, not proof; the direct evidence is a "
+            "checkpoint comparison described in the README."
         )
-        audit_img = gr.Image(label="Which modules ever received a gradient",
+        audit_img = gr.Image(label="Linear biases still at zero, by module",
                              type="pil")
         audit_txt = gr.Code(label="Measurements")
         demo.load(audit_view, None, [audit_img, audit_txt])
@@ -323,7 +324,8 @@ with gr.Blocks(title="CosmUFR Run 4", theme=gr.themes.Soft()) as demo:
         demo.load(results_view, None, [res_table])
         gr.Markdown(
             "Reproduce with `python -m cosmufr.reproduce` after cloning the "
-            "repository. On a clean machine this matches to within 1e-6."
+            "repository. The bundled benchmark reproduces within 1e-5 in R²; "
+            "the validation table above is a saved report."
         )
 
     gr.Markdown(FOOTER)

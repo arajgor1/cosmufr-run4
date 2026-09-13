@@ -1,11 +1,18 @@
 """
 The test that would have caught this model's central defect on day one.
 
-CosmUFR trained for months with its observation encoder, belief proposal
-network and settling core receiving zero gradient. Nothing in the loss curves
-showed it: the read-out heads learned to read the frozen random projection
-well enough that the headline metrics looked reasonable, and several auxiliary
-losses sat at constants that were read as convergence.
+CosmUFR Run 4 trained with its observation encoder, belief proposal network
+and settling core receiving no gradient: they are bit-identical to Run 2's
+checkpoint saved before any optimizer step. Nothing in the loss curves showed
+it: the read-out heads learned to read the frozen random projection well enough
+that the headline metrics looked reasonable, and several auxiliary losses sat at
+constants that were read as convergence.
+
+Scope: these tests exercise the release package's inference copy of the model
+with a parameter-only loss. They document the same disconnection, but they are
+not the training loop. The September 2026 audit diagnosed the training code
+itself, where later revisions reconnect the encoder but not the settling
+networks' step size or preconditioner.
 
 A single synthetic training step, checking that every module's gradient norm
 is non-zero and within a sane ratio of the others, would have surfaced it

@@ -268,9 +268,10 @@ def run_facts(params, sigmas, labels, truth=None, *, source: str = "",
         facts["how far the sixteen refinement steps moved the internal answer"] = (
             f"{belief_movement * 100:.3f} percent of its size. This is a known "
             f"property of the released model rather than something about this "
-            f"spectrum: an audit found those steps were never trained, so they "
-            f"do nothing on every input. The answer above is what the model had "
-            f"before the steps ran. Report this, do not speculate about why")
+            f"spectrum: in the released checkpoint the networks that run those "
+            f"steps are still at their initial values, and they barely move the "
+            f"answer on any input. The answer above is essentially what the model "
+            f"had before the steps ran. Report this, do not speculate about why")
     if energy_ulps is not None:
         facts["how much the score those steps were meant to reduce actually changed"] = (
             f"{energy_ulps:.1f} of the smallest amounts the arithmetic can represent")

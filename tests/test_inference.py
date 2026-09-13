@@ -40,7 +40,7 @@ def _ckpt_path():
 def test_load_model():
     model = cosmufr.load_model(ckpt_path=_ckpt_path())
     n_params = sum(p.numel() for p in model.parameters())
-    # Run 4 = 137M params (architecture spec).
+    # Run 4 = 136,194,617 params (checked against the released checkpoint).
     assert 130_000_000 < n_params < 145_000_000, f"Param count off: {n_params:,}"
 
 

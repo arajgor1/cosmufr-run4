@@ -72,9 +72,9 @@ class CosmUFRResult:
         log(k) values where pk_recon is evaluated (length 200).
     energy_log : list[float]
         Settling energy at each of the 17 steps (initial + 16 GD updates). On
-        the released checkpoint this is flat to one float32 unit: the energy
-        heads collapsed to an input-independent constant, so there is no
-        landscape to descend. See cosmufr.settling_report.
+        the released checkpoint this is flat to one float32 unit, and the same
+        value to float32 resolution across inputs, so there is nothing to
+        descend. See cosmufr.settling_report.
     """
     params:        Dict[str, float]
     sigmas:        Dict[str, float]

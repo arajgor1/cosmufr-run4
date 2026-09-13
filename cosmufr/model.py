@@ -278,7 +278,7 @@ class HaloMassHead(nn.Module):
 
 class CosmUFRLite(nn.Module):
     """
-    CosmUFR Run 4 — 137M-parameter belief-settling cosmology emulator.
+    CosmUFR Run 4 — 136,194,617-parameter belief-settling parameter predictor.
 
     Forward pass (joint, default):
         obs [B, 400] -> ObsEncoder -> z [B, 1024]

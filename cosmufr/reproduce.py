@@ -1,5 +1,5 @@
 """
-cosmufr/reproduce.py — regenerate every number in the README, in one command.
+cosmufr/reproduce.py — regenerate the benchmark table and defect diagnostics, in one command.
 
     python -m cosmufr.reproduce
     python -m cosmufr.reproduce --ckpt best.pt --figures out/

@@ -48,10 +48,10 @@ def _style(fig, axes):
 
 def fig_weight_audit(audit, figsize=(8, 4.2)):
     """
-    The finding: which modules ever received a gradient.
+    Which modules still have all-zero Linear biases.
 
-    This is the most informative figure in the release. It shows that the
-    belief pipeline the architecture is named for never trained.
+    A supporting clue for the audit's finding. Direct evidence that the belief
+    pipeline never changed comes from comparing checkpoints, not from this figure.
     """
     import matplotlib.pyplot as plt
 
@@ -72,19 +72,19 @@ def fig_weight_audit(audit, figsize=(8, 4.2)):
     ax.set_yticklabels(names, fontsize=9)
     ax.set_xlim(0, 1.42)
     ax.set_xlabel("fraction of Linear layers whose bias is still exactly 0.0", fontsize=9)
-    ax.set_title("Which modules ever received a gradient", fontsize=11, pad=10)
+    ax.set_title("Linear biases still at zero, by module", fontsize=11, pad=10)
     ax.invert_yaxis()
 
     for yi, f in zip(y, fracs):
-        label = "never trained" if f == 1.0 else "trained"
+        label = "all biases zero" if f == 1.0 else "biases moved"
         ax.text(f + 0.03, yi, label, va="center", fontsize=8.5,
                 color=C_RED if f == 1.0 else C_GREEN)
 
     ax.axvline(1.0, color=C_GREY, linestyle=":", linewidth=1, alpha=0.6)
     fig.text(0.01, -0.02,
-             "An optimizer step moves a bias off its initial value. A module "
-             "whose biases are all bit-exactly zero\nafter 40 epochs received no "
-             "gradient at all.", fontsize=8, color=C_GREY)
+             "Biases are initialised to zero, so all-zero biases are consistent "
+             "with no update.\nA clue, not proof: compare checkpoints for direct "
+             "evidence.", fontsize=8, color=C_GREY)
     fig.tight_layout()
     return _style(fig, ax)
 
@@ -144,7 +144,7 @@ def fig_settling_trajectory(report, figsize=(8, 6)):
              f"Belief moves {report.belief_movement*100:.3f}% of its norm across "
              f"all 16 steps; cosine similarity {report.cosine_similarity:.6f}.\n"
              "Both panels are flat. The refinement runs and does no measurable "
-             "work. The weight audit gives the reason.",
+             "work.",
              fontsize=8, color=C_GREY)
     fig.tight_layout()
     return _style(fig, [ax1, ax2])
@@ -195,9 +195,8 @@ def fig_pk_reconstruction(k, pk_z0, pk_z047, pk_recon, log_k_recon=None,
 
     This is not a reconstruction. The generative head returns the same constant
     (log10 P = 2.6327) at every k, for every input spectrum, and even for a
-    random belief vector: measured variation is 2e-7 across k and 2e-7 across
-    inputs. Its reported MSE of 0.687 is simply the variance of log10 P(k)
-    about a constant, which is what a predictor that ignores its input scores.
+    random belief vector: measured variation is about 4e-7 across k and 1e-7
+    across inputs on benchmark spectra.
 
     The figure is kept because the collapse is worth seeing.
     """

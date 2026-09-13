@@ -7,11 +7,14 @@ CosmUFR was designed around a belief-settling core: encode the spectrum into a
 1024-d belief, then refine it through 16 steps of gradient descent on a learned
 energy. That refinement was the research claim.
 
-In September 2026 an audit of the released checkpoint found that the encoder,
-the belief proposal network and the settling core's own networks had received
-**zero gradient** across the entire training programme. They sit at their
-initialization. The trained parts of the model are the read-out heads, which
-learn to read a fixed random projection of the input.
+In September 2026 an audit found that in the released checkpoint the encoder,
+the belief proposal network and the settling core's own networks are
+bit-identical to Run 2's checkpoint saved before any optimizer step, and that
+the code that trained Run 4 passes them no gradient. The trained parts of the
+model are the read-out heads, which read a fixed random projection of the input.
+That comparison and training-path diagnosis need historical checkpoints and
+training source that are not public; the functions here measure what can be
+measured from the released weights.
 
 This module reproduces that audit, so a reader can confirm it in about a minute
 rather than taking the claim on trust. Every function returns measurements, not
@@ -57,9 +60,10 @@ class WeightAudit:
         lines = [
             "Per-module weight audit",
             "",
-            "A Linear layer that has taken even one optimizer step essentially",
-            "never has a bias of exactly 0.0. Modules below with every bias at",
-            "exactly zero never received a gradient.",
+            "Training initialises every Linear bias to zero, so a module whose",
+            "biases are all still exactly 0.0 is consistent with never having been",
+            "updated. That is a clue, not proof: halo_head has all-zero biases and",
+            "rescaled weights. Use compare_checkpoints for direct evidence.",
             "",
             f"{'module':<22}{'on path':>9}{'n Linear':>10}{'biases == 0':>14}"
             f"{'max |bias|':>13}{'verdict':>12}",
@@ -76,9 +80,9 @@ class WeightAudit:
             "",
             "'on path' marks the modules the default two-redshift inference "
             "actually runs.",
-            "The obs_encoder_single / belief_proposal_seq pair belongs to an "
-            "unused single-redshift",
-            "path and did train, which is why this column matters.",
+            "The obs_encoder_single / belief_proposal_seq pair is a sequential "
+            "path used only in",
+            "training; it did train, which is why this column matters.",
         ]
         return "\n".join(lines)
 
@@ -95,12 +99,13 @@ class WeightAudit:
 
 def weight_audit(model) -> WeightAudit:
     """
-    Classify each top-level module as trained or untrained from its biases.
+    Count, per top-level module, the Linear layers whose bias is still exactly zero.
 
-    PyTorch initializes Linear biases from a uniform distribution, and any
-    optimizer step moves them off their starting value. A module whose biases
-    are all bit-exactly 0.0 in a checkpoint that trained for tens of epochs
-    therefore received no gradient at all.
+    Training initialises every Linear bias to zero, so a module whose biases are
+    all still 0.0 is consistent with never having been updated. It is a clue, not
+    proof: a module can keep zero biases while its weights change (halo_head's
+    weights were uniformly rescaled between Run 2 and Run 4). The verdict string
+    "UNTRAINED" is kept for compatibility and means "all biases zero".
     """
     import torch
 
@@ -180,8 +185,8 @@ class SettlingReport:
             "Interpretation: the settling loop runs, but it moves the belief by a",
             "fraction of a percent and the energy changes by a couple of float32",
             "resolution steps -- the smallest change representable at that",
-            "magnitude. The refinement does no measurable work. weight_audit()",
-            "gives the reason: its networks never trained.",
+            "magnitude. The refinement does no measurable work. Its networks",
+            "are still at initialization (see compare_checkpoints).",
         ]
         return "\n".join(lines)
 
@@ -291,11 +296,11 @@ def compare_checkpoints(path_a: str, path_b: str) -> Dict[str, dict]:
     """
     Compare two checkpoints tensor by tensor, grouped by module.
 
-    This is the measurement that settled the question. Run 4 was warm-started
-    from Run 3, itself warm-started from Run 2, then trained 40 further epochs.
-    Comparing Run 2 against Run 4 shows the read-out heads moved by 66-79% in
-    relative norm while the encoder, belief proposal and settling core were
-    bit-identical: 204 of 204 tensors unchanged.
+    Comparing Run 2's checkpoint saved before any optimizer step with Run 4's
+    released checkpoint shows the encoder, belief proposal and settling core
+    bit-identical (38 + 38 + 128 = 204 tensors), while the read-out heads moved
+    by 66-79% (mean relative difference over all tensors, as computed here).
+    Run 4 was warm-started through Run 3 from Run 2.
     """
     import torch
     from collections import defaultdict

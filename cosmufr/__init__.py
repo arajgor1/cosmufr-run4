@@ -25,8 +25,9 @@ Checking the model's honesty
 Known defects, stated up front
 ------------------------------
 1. The observation encoder, the belief proposal network and the settling core
-   never received a gradient. They sit at initialization; the read-out heads
-   learned to read a fixed random projection. `weight_audit()` shows this.
+   are still at initialization in this checkpoint, and the training code that
+   produced it passes them no gradient. The read-out heads read a fixed random
+   projection. `weight_audit()` shows a supporting clue (all-zero biases).
 2. Settling moves the belief by ~0.1% and its energy is flat to float32
    resolution. `settling_report()` shows this.
 3. The uncertainty head is pinned at its clamp floor for most parameters, so
@@ -37,8 +38,7 @@ Known defects, stated up front
    throughout most of the training corpus.
 5. The GenerativeHead collapsed: `result.pk_recon` is the same constant at
    every k, for every input, and for a random belief. It is not a
-   reconstruction, and its MSE of 0.687 is the variance of log10 P(k) about a
-   constant.
+   reconstruction.
 
 See README.md and MODEL_CARD.md for the full picture.
 """

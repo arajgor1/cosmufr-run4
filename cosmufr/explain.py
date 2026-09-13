@@ -19,10 +19,10 @@ FIGURE_NOTES = {
                  "float32 resolution: a trace inside the shaded band is not a "
                  "small descent, it is a change too small for the number to "
                  "represent. The refinement runs and does nothing.",
-        "why": "The energy heads collapsed to an input-independent constant "
-               "during training, so there is no landscape to descend, and the "
-               "networks that would steer the descent never received a "
-               "gradient at all.",
+        "why": "The energy is the same to float32 resolution across inputs, so "
+               "there is nothing to descend, and the networks that set the step "
+               "size and preconditioner receive no gradient in any version of "
+               "the training code examined.",
     },
     "pk": {
         "title": "Power spectrum",
@@ -32,26 +32,27 @@ FIGURE_NOTES = {
                   "overlaid, with the residual below.",
         "means": "The dashed line is flat. The head returns the same number at "
                  "every k, for every input spectrum, and for a random belief "
-                 "vector. It is not reconstructing anything. Its reported "
-                 "error of 0.687 is just the variance of log10 P(k) about a "
-                 "constant, which is what any predictor that ignores its input "
-                 "would score.",
+                 "vector. It is not reconstructing anything.",
         "why": "The head trained, unlike the encoder, but it converged to "
                "emitting a constant rather than a function of the belief.",
     },
     "weight_audit": {
-        "title": "Which modules ever received a gradient",
+        "title": "Linear biases still at zero, by module",
         "input": "The released checkpoint's weights, nothing else.",
         "output": "For each module, the fraction of its Linear layers whose "
                   "bias is still bit-exactly zero.",
         "means": "Training sets every Linear bias to exactly zero before it "
-                 "starts, and the first optimizer step to reach one moves it "
-                 "off zero. A module whose biases are all still bit-exactly "
-                 "0.0 after forty epochs never received a gradient. Four "
-                 "modules are in that state, three of them the belief "
-                 "pipeline this architecture is named for.",
-        "why": "SettlingCore.forward detaches the belief at the start of every "
-               "step, which severs everything upstream of it from the loss.",
+                 "starts, so a module whose biases are all still 0.0 is "
+                 "consistent with never having been updated. Four modules are in "
+                 "that state, three of them the belief pipeline this "
+                 "architecture is named for. It is a clue, not proof: halo_head's "
+                 "biases are zero but its weights changed. The direct evidence is "
+                 "a comparison with Run 2's checkpoint saved before any optimizer "
+                 "step, which is described on the page.",
+        "why": "In the code that trained Run 4, the settling loop detaches the "
+               "belief at every step and computes its step size and "
+               "preconditioner without gradients, so no gradient reaches the "
+               "encoder, the proposal or the settling networks.",
     },
     "recovery": {
         "title": "Parameter recovery",

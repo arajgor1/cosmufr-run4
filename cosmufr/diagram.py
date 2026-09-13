@@ -29,10 +29,10 @@ C_ACC = "#60a5fa"
 # What the audit found, per block. Kept beside the drawing so the picture and
 # the claim cannot drift apart.
 VERDICT = {
-    "obs": ("never trained", C_BAD),
-    "prop": ("never trained", C_BAD),
-    "settle": ("never trained", C_BAD),
-    "energy": ("trained, went flat", C_WARN),
+    "obs": ("still at init", C_BAD),
+    "prop": ("still at init", C_BAD),
+    "settle": ("still at init", C_BAD),
+    "energy": ("trained, output constant", C_WARN),
     "param": ("trained, works", C_OK),
     "unc": ("stuck at its floor", C_WARN),
     "gen": ("returns a constant", C_WARN),

@@ -61,7 +61,7 @@ SOURCE_BLURB = {
     "bacco": "BACCO, an emulator trained on high-resolution N-body simulations",
     "bcemu": "BCemu, which adds the effect of gas and feedback on small scales",
     "spk": "SP(k), a model for how baryons suppress small-scale structure",
-    "dark_emulator": "Dark Emulator, built from the Quijote N-body suite",
+    "dark_emulator": "Dark Emulator, from the Dark Quest project (Nishimichi et al. 2019)",
     "bacco_neutrino": "BACCO, with massive neutrinos included",
     "bacco_full8": "BACCO, varying all eight parameters at once",
     "bcemu_neutrino": "BCemu, with massive neutrinos included",
@@ -85,6 +85,10 @@ REPORT = json.loads((_reports / "honest_eval.json").read_text()) \
     if (_reports / "honest_eval.json").exists() else {}
 RIDGE = json.loads((_reports / "ridge_baseline.json").read_text()) \
     if (_reports / "ridge_baseline.json").exists() else {}
+# The single source for every number the page prints: reproduced, saved-report and
+# diagnostic results, each labelled. Built by scripts/build_results.py.
+RESULTS = json.loads((_reports / "results_v1.json").read_text(encoding="utf-8")) \
+    if (_reports / "results_v1.json").exists() else {}
 
 EXAMPLE_IDS = list(range(0, min(len(BENCH), 5400), 211))[:24]
 
@@ -775,7 +779,7 @@ def _page(body: str, title: str = "CosmUFR — cosmology from a power spectrum")
     return HTMLResponse(f"""<!doctype html><html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{html.escape(title)}</title>
-<meta name="description" content="A neural network that reads the matter power spectrum and returns eight cosmological parameters in a quarter of a second, with the benchmark and the audit published alongside it.">
+<meta name="description" content="A cosmological parameter-prediction prototype that reads the matter power spectrum, published with its benchmark and an audit of its training defects.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -862,6 +866,10 @@ def _hero_visual() -> str:
 
 
 def _hero() -> str:
+    m = RESULTS["modules"]
+    unchanged = m["unchanged_share_percent"]
+    head = m["by_module"]["param_head"]["share_percent"]
+    om = RESULTS["validation_report"]["varying_only"]["Om"]["rmse"]
     return f"""<header class="hero">
 <canvas id="plexus"></canvas>
 <div class="brackets"><i></i><i></i><i></i><i></i></div>
@@ -869,27 +877,29 @@ def _hero() -> str:
 <div>
 <div class="eyebrow"><span class="dot"></span>Run 4 &middot; research preview &middot; live model</div>
 <h1 class="display">A 136M-parameter model for cosmological inference &mdash;<br>
-<em>and the audit that found its core never trained.</em></h1>
-<p class="lede">CosmUFR infers eight cosmological parameters from the matter
+<em>and the audit that found its core still at initialization.</em></h1>
+<p class="lede">CosmUFR predicts eight cosmological parameters from the matter
 power spectrum in one forward pass. It was designed to reach them by refining a
-belief over sixteen steps. I stress-tested the released weights and that
-refinement had never received a gradient, so the answers come from one read-out
-head on a frozen random projection. This page is in five parts: what I did,
-what I observed across eight training runs, what I conclude, the model running
-live on data you choose, and the code. Every number below is measured.</p>
+belief over sixteen steps. In the released checkpoint the encoder, the belief
+proposal and the refinement networks are bit-identical to their state before
+training, and the code that trained it passes them no gradient, so the answers
+come from a read-out head on a fixed random projection of the input. This page
+covers what I did, what I observed, what I conclude, the model running live, and
+the code. Each number is labelled as reproduced, taken from a saved report, or
+from a diagnostic run.</p>
 <p class="lede caveat"><span class="lead-in">Before anything else.</span> The
-input here is a matter power spectrum from emulators, not a measured observable.
-No survey window, no shot noise, no mask, no galaxy bias. Pointing this at real
-survey data would need all of them, and that work does not exist yet.</p>
+input is an emulator matter power spectrum, not a measured observable: no survey
+window, shot noise, mask, galaxy bias or noise model. Nothing here has been
+pointed at survey data.</p>
 <div class="ctas">
   <a class="btn btn-p" href="#what-i-observed">What I found &rarr;</a>
-  <a class="btn btn-g" href="#demo">Run it on real data</a>
+  <a class="btn btn-g" href="#demo">Run it on a spectrum</a>
 </div>
 <div class="metrics">
-  <div><div class="v">{_share("untrained"):.0f}%</div><div class="k">never received a gradient</div></div>
-  <div><div class="v">{_share("works"):.1f}%</div><div class="k">produces every answer</div></div>
-  <div><div class="v">0.027</div><div class="k">RMSE on matter density</div></div>
-  <div><div class="v">6,000</div><div class="k">checkable test cases</div></div>
+  <div><div class="v">{unchanged:.1f}%</div><div class="k">of parameters still at initialization</div></div>
+  <div><div class="v">{head:.1f}%</div><div class="k">compute the reported parameters</div></div>
+  <div><div class="v">{om:.3f}</div><div class="k">RMSE on matter density, validation report</div></div>
+  <div><div class="v">6,000</div><div class="k">benchmark rows, reproduced within 1e-5</div></div>
 </div>
 </div>
 {_hero_visual()}
@@ -910,12 +920,11 @@ route.</span> You guess a set of cosmological parameters, simulate the universe
 they would produce, compare it to what was measured, and repeat. Hundreds of
 thousands of times, until the guesses converge. It is reliable and it is slow:
 CPU-days to CPU-weeks for a single analysis.</p>
-<p class="muted" style="margin:0"><span class="lead-in">The alternative this
-tests.</span> Train a network on millions of simulated universes until it learns
-the inverse directly. Then a new measurement is a single forward pass. If that
-works, the cost of an analysis drops by orders of magnitude, and questions you
-would never run because they are too expensive become routine: sweep the whole
-survey, re-run under every systematic, iterate in an afternoon.</p>
+<p class="muted" style="margin:0"><span class="lead-in">The approach this
+tests.</span> Train a network on tens of millions of emulator-generated spectra
+until it maps a spectrum to its parameters directly, so a new spectrum costs a
+single forward pass. If that worked well enough, some analyses could become much
+cheaper to run. That is a long-term aim, and nothing here tests it.</p>
 </div>
 
 <div class="cards" style="margin-top:26px">
@@ -930,7 +939,7 @@ once; using it costs one pass.</p></div>
 <div class="card"><div class="n">Eight numbers out</div>
 <h4>A candidate cosmology</h4>
 <p>How much matter, how clumpy, how fast the expansion, what the dark energy is
-doing. Plus, honestly, which of those it does not yet get right.</p></div>
+doing. Plus which of those it does not recover.</p></div>
 </div>
 
 <div class="subhead plain"><h3 class="display">The path a spectrum takes</h3>
@@ -941,9 +950,9 @@ it into answers.</p></div>
 <div class="diagram"><p class="cap">Inference path &middot; one forward pass</p>
 {architecture_svg()}</div>
 
-<p class="muted" style="margin-top:26px">This release is an early, working, and
-openly flawed attempt at that. Everything below is measured rather than claimed,
-the test data ships with the code, and the parts that do not work are named.</p>
+<p class="muted" style="margin-top:26px">This release is an early prototype of
+that idea. The benchmark ships with the code, each number says where it comes
+from, and the parts that do not work are named.</p>
 </div></div></section>"""
 
 
@@ -1036,40 +1045,40 @@ the model recovered that parameter for that universe.</p></div>
 constant on every input, so it is flagged in the results table and should be
 ignored. What I observed explains why.</p></div>
 <div class="card"><div class="n">Expect a spread</div><h4>Not all eight are equal</h4>
-<p>The spectrum constrains matter density and clumpiness strongly, expansion rate
-and dark energy weakly, and neutrino mass essentially not at all. That ordering
-is physics, and it shows in the accuracy table.</p></div>
+<p>On this data the model recovers matter density and clumpiness best, expansion
+rate and dark energy partly, and neutrino mass not at all. Whether that ordering
+reflects what the spectrum contains or what the training data covered is an open
+question.</p></div>
 </div>
 </div></div></section>"""
 
 
 
+# The author's run notes. The September 2026 audit examined Run 2's and Run 4's
+# checkpoints and the saved logs of later smoke runs directly; the rest of this
+# table is the historical account, and the page says so under the table.
 RUNS = [
     ("Run 1",
-     "First end-to-end training. 57M samples across 8 sources.",
-     "The infrastructure worked. Nothing else did: the sequential loss term was "
-     "identically zero and every parameter was out of range."),
+     "First end-to-end training.",
+     "The pipeline ran end to end; parameter recovery did not."),
     ("Run 2",
-     "First serious run. 45 epochs, batch 2048, full curriculum.",
-     "Matter density and clustering amplitude came in strong. The sequential "
-     "loss was still dead, traced to a two-pass forward bug."),
+     "Longer curriculum from a fresh initialization.",
+     "Matter density and clustering amplitude came in. Its checkpoint saved before "
+     "any optimizer step is the reference the audit compares against."),
     ("Run 3",
-     "Fixed the sequential loss, reweighted the objective, enabled torch.compile.",
-     "1.64&times; throughput. The expansion rate got worse, not better, because "
-     "one shared belief-proposal module was serving two incompatible jobs."),
+     "Reweighted objective, fixed sequential-consistency loss, torch.compile.",
+     "Faster; the expansion rate got worse."),
     ("Run 4",
-     "Split that module into separate joint and sequential paths. Fixed a state "
-     "leak in the settling core.",
-     "The released checkpoint. Expansion rate improved most, and calibration hit "
-     "a ceiling that later turned out to be the uncertainty head's clamp floor."),
+     "Separate joint and sequential belief proposals; warm-started through Run 3.",
+     "The released checkpoint."),
     ("Runs 5&ndash;8",
-     "Four more attempts at the architecture, chasing what looked like a hard ceiling.",
-     "All of it inconclusive. The evaluation noise was larger than every effect "
-     "being measured, so none of those experiments could have shown anything."),
+     "Further architectural attempts, several of them short smoke runs.",
+     "Inconclusive: epoch-to-epoch noise in the saved evaluations was as large as "
+     "the differences being compared."),
     ("The audit",
-     "Stopped training. Read the weights instead.",
-     "The belief pipeline had never received a gradient, and the energy heads had "
-     "collapsed to a constant. Whatever the ceiling was, it was not the thing\n     I had argued it was."),
+     "Stopped training and examined the weights and the training code.",
+     "The encoder, proposal and refinement networks never left their initial "
+     "values in Runs 2 to 4, and the energy objective is unbounded below."),
 ]
 
 
@@ -1080,19 +1089,21 @@ def _evolution() -> str:
         f'<td class="muted">{learned}</td></tr>'
         for name, changed, learned in RUNS)
     return f"""<section id="evolution"><div class="wrap">
-{_shead("07", "How it got here", "Four training runs, then a decision to stop training.",
+{_shead("07", "How it got here", "Training runs, then a decision to stop training.",
         "The useful history is not a score table. It is what each run changed "
         "and what that taught, because the scores turned out to be less "
         "trustworthy than they looked.")}
 <div class="sbody">
 <div class="panel"><div class="tw"><table>
 <tr><th>run</th><th>what changed</th><th>what it taught</th></tr>
-{rows}</table></div></div>
+{rows}</table></div>
+<p class="dim" style="margin:12px 0 0">From the author's run notes, except where
+the audit examined checkpoints or saved logs directly.</p></div>
 
 <div class="panel warn">
 <p class="muted" style="margin:0"><span class="lead-in">Why there are no
-per-run scores here.</span> There were, for months. The audit found that
-epoch-to-epoch evaluation noise was &plusmn;0.03 to 0.10, larger than nearly
+per-run scores here.</span> There were, for months. A June review of the saved
+training logs found that epoch-to-epoch evaluation noise was &plusmn;0.03 to 0.10, larger than nearly
 every difference being compared between runs, and that the validation set had
 changed partway through without the earlier numbers being re-measured against
 it. So the run-to-run deltas that drove five months of decisions were mostly
@@ -1100,177 +1111,161 @@ noise. Publishing them as a progression would repeat the mistake. What survives
 is the architectural lesson from each run, which is what the table records.</p>
 </div>
 
-<p class="muted">The most expensive lesson was Run 5: seven changes shipped at
-once, a catastrophic regression, and no way to tell which change caused it.
-Everything after that is single-change-at-a-time with a threshold written down
-before the run starts.</p>
+<p class="muted">The most expensive lesson in the run notes was Run 5: several
+changes shipped at once, a regression, and no way to tell which change caused it.
+Any future run should change one thing at a time, with a threshold written down
+before it starts.</p>
 </div></div></section>"""
 
 
 def _conclusion() -> str:
     """The standing of the work, stated plainly enough to disagree with."""
-    vary = REPORT["full_val_metrics_varying_only"] if REPORT else {}
-    om = vary.get("Om", {}).get("rmse")
-    s8 = vary.get("s8", {}).get("rmse")
-    om_txt = f"{om:.3f}" if om else "0.027"
-    s8_txt = f"{s8:.3f}" if s8 else "0.028"
+    vary = RESULTS["validation_report"]["varying_only"]
+    om, s8, mv = vary["Om"]["rmse"], vary["s8"]["rmse"], vary["mv"]["r2"]
 
     return f"""
 <div class="panel accent">
 <p class="muted" style="margin:0 0 14px"><span class="lead-in">In one
 paragraph.</span> The architecture this project set out to test has not been
-tested. The mechanism that makes it interesting never ran, so nothing here is
-evidence for or against the idea. What did get built is a fast, honest, checkable
-baseline: it recovers two of eight cosmological quantities usefully, is beaten by
-a linear fit on one of them, and collapses on the one slice of data drawn from
-real gas physics. That is a starting point with a clear next step, not a
-result.</p>
-<p class="muted" style="margin:0">The audit and the retraction under it are
-both about the same thing: how easy it was to run eight training runs, watch the
-loss fall, and be wrong the whole time.</p>
+tested. Its refinement did not operate in the released model, so nothing here is
+evidence for or against the idea. What exists is a checkable point predictor: it
+recovers two of eight parameters on emulator spectra, is beaten by a linear fit on
+one of them, and fails on the one hydrodynamic slice it is tested against. That is
+a starting point, not a result.</p>
+<p class="muted" style="margin:0">The audit and the retraction under it are about
+the same thing: how easy it was to run training, watch the loss fall, and be wrong
+about what the model was doing.</p>
 </div>
 
 <div class="verdicts">
   <div class="vd good">
-    <h4>What it can do today</h4>
+    <h4>What it does today</h4>
     <ul>
-      <li>Return eight cosmological parameters from a power spectrum in about a
-          third of a second on one CPU core, with no simulator and no chain.</li>
-      <li>Recover matter density and clustering amplitude to about {om_txt} and
-          {s8_txt}, which is roughly four times worse than a real survey but the
-          right shape.</li>
-      <li>Reproduce every published number from a benchmark that ships with the
-          code, on anyone's machine.</li>
-      <li>Report its own faults, live, on every run.</li>
+      <li>Returns eight parameters from a power spectrum in a few hundred
+          milliseconds on CPU, with no simulator in the loop. The demo prints the
+          time of each call.</li>
+      <li>Recovers matter density and clustering amplitude with RMSE of about
+          {om:.3f} and {s8:.3f} on validation rows where they vary.</li>
+      <li>Reproduces the bundled 6,000-row benchmark within 1e-5 in R&sup2;.</li>
+      <li>Reports its own degenerate outputs on every run.</li>
     </ul>
   </div>
   <div class="vd bad">
-    <h4>What it cannot do</h4>
+    <h4>What it does not do</h4>
     <ul>
-      <li>Give you an uncertainty. The confidence output is a fixed number and
-          should be ignored.</li>
-      <li>Touch real survey data. The input is a clean simulated spectrum; a
-          measured one arrives with a survey window, shot noise, a mask and
-          galaxy bias, none of which this has ever seen.</li>
-      <li>Handle gas physics. On the one slice from a full hydrodynamic
-          simulation it does worse than guessing the average.</li>
-      <li>Separate neutrino mass from feedback. Over these scales the two look
-          alike and nothing in the design distinguishes them.</li>
-      <li>Support any claim about the architecture, which never ran.</li>
+      <li>Report an uncertainty. The &sigma; output is a constant.</li>
+      <li>Work on survey data. The input is an emulator spectrum with no window,
+          shot noise, mask, galaxy bias or noise model.</li>
+      <li>Recover neutrino mass: R&sup2; {mv:.3f} where it varies.</li>
+      <li>Beat predicting the mean on the hydrodynamic slice, where a channel-order
+          defect also confounds the cause.</li>
+      <li>Support any claim about iterative refinement.</li>
     </ul>
   </div>
   <div class="vd next">
-    <h4>What I know how to fix</h4>
+    <h4>What would come next</h4>
     <ul>
-      <li><strong>Reconnect the refinement.</strong> A small code change, guarded
-          by a test that already exists. Free, and verifiable before spending
-          anything on training.</li>
-      <li><strong>Rebalance the training data.</strong> The parameters recovered
-          worst are the ones the corpus barely varies: dark energy sits at its
-          default value in 86% of rows.</li>
-      <li><strong>Correct the two suites</strong> whose redshift channels are
-          stored in the wrong order, and re-measure the one result currently
-          confounded by them.</li>
+      <li><strong>A trustworthy data subset.</strong> Recorded provenance, redshift
+          channels mapped from what the generator returns, and splits grouped by
+          base cosmology.</li>
+      <li><strong>A model that genuinely trains.</strong> Every intended module
+          receiving a gradient and an update, checked module by module, and an
+          objective bounded below. The diagnosis of what the current code reaches
+          is done; the repair is not.</li>
+      <li><strong>A fair comparison.</strong> Refinement against a tuned direct
+          network of matched size, repeated seeds, and a threshold written down
+          before the test set is opened.</li>
     </ul>
   </div>
 </div>
 
 <div class="subhead plain"><h3 class="display">What I do not know how to fix</h3>
 <p class="muted sub-lede">These are the questions this project cannot settle from
-the inside, and they are why it is published in this state rather than quietly
-retrained. Each one changes what the next training run should be, and I cannot
+the inside. Each one changes what the next training run should be, and I cannot
 tell which answer is right.</p></div>
 
 <div class="opens">
   <div class="op">
     <h4>Is refining an answer worth doing at all?</h4>
-    <p>The design rests on the idea that a model which sharpens its answer over
-    several steps can spend more effort on a hard observation than an easy one.
-    That has not been tested, because the mechanism never ran. It is equally
-    possible that a single pass reaches the same place for a fraction of the
-    machinery, and nothing here argues otherwise. The experiment that would
-    settle it is cheap. Knowing whether it is the right experiment is not.</p>
+    <p>The design assumes a model that sharpens its answer over several steps can
+    spend more effort on a hard observation than an easy one. That has not been
+    tested, because the mechanism never operated. A single pass may reach the same
+    place for a fraction of the machinery, and nothing here argues otherwise.</p>
   </div>
   <div class="op">
     <h4>What should the internal score be trained to do?</h4>
-    <p>The refinement works by rolling downhill on a score the model learns for
-    itself. Ours is trained to be low wherever the network already landed, which
-    a constant satisfies, and it is never shown a correct answer to be low at. I
-    can see why that fails. I do not have a formulation I believe in, and the
-    ones I have tried trade one degenerate solution for another.</p>
+    <p>The refinement descends a score the model learns for itself. One thing is
+    known: the current objective adds the mean energy to a term that depends only
+    on differences, so it is unbounded below. What it should be instead, tied to
+    something observable and never shown the answer at inference, I do not have a
+    formulation I believe in.</p>
   </div>
   <div class="op">
     <h4>How much of the weakness is the measurement, and how much is mine?</h4>
-    <p>Two of the eight parameters recover well and six do not. I claimed once
-    that this was a hard limit of the observable, then checked the argument and
-    found it did not hold, so I hold no position on it now. I cannot separate a
-    real information limit from a limit of my own training coverage, and the two
-    imply completely different next moves.</p>
+    <p>Two of the eight parameters recover well and six do not. I once claimed this
+    was a limit of the observable; that bound was never derived and is withdrawn.
+    I cannot separate what two noiseless spectra over this range of scales contain
+    from what the training data covered, and the two imply different next
+    moves.</p>
   </div>
   <div class="op">
     <h4>Would this ever reach real survey data?</h4>
-    <p>Nobody measures a matter power spectrum. A survey records where galaxies
-    are, and everything between that and this model's input is unbuilt here. I
-    do not know whether the right route is to model that gap or to rebuild the
-    input around what a survey actually produces.</p>
+    <p>Nobody measures a matter power spectrum directly. A survey records where
+    galaxies are, and everything between that and this model's input is unbuilt
+    here. I do not know whether the right route is to model that gap or to rebuild
+    the input around what a survey produces.</p>
   </div>
 </div>
 
 <div class="panel accent">
-<p class="muted" style="margin:0 0 12px"><span class="lead-in">What this is aimed
-at.</span> A survey measurement interpretable in seconds rather than weeks, with
-an uncertainty you can defend to a referee. Get there and the analyses nobody
-runs today because they cost too much become ordinary: sweep an entire survey,
-re-run it under every systematic, close the loop between an observation and a
-constraint inside one working session.</p>
-<p class="muted" style="margin:0">Nothing here is at that point, and the distance
-is not a schedule. It is the four questions above, of which only the last is
-mostly engineering.</p>
+<p class="muted" style="margin:0"><span class="lead-in">Long-term aim,
+untested.</span> A fast inference step that makes expensive analyses cheaper to
+run, with uncertainties that could be defended. Nothing here shows that it can be
+done, that it would preserve the accuracy of standard methods, or what it would
+save.</p>
 </div>
 """
 
 
 def _roadmap() -> str:
     """
-    The model-evolution ladder from the design documents, restated honestly.
+    The model-evolution ladder from the design documents, restated as intentions.
 
-    The organising idea: at each step, name a limitation that a person built in
-    rather than one physics imposed, and remove it. The audit added a step 00 at
-    the bottom, which is the honest change to the plan.
+    Each rung names a limitation to remove. Nothing above rung 01 exists, and
+    every rung above 00 depends on modules that did not train, so each is stated
+    as a design intention rather than a property of this model.
     """
-    cards = """<div class="step-row bad"><div class="sn">00</div><div class="sc"><div class="st-head"><h4>Make the architecture actually train</h4><span class="pill-bad">blocked, and first</span></div><p class="dim" style="margin:0 0 8px">the defect</p><p class="muted" style="margin:0">Not in the original plan. The audit put it here. The belief pipeline receives no gradient and the energy landscape is flat, so every rung above this one rests on a floor that is not there. Free to verify, and verifiable before any training spend.</p></div></div><div class="step-row ok"><div class="sn">01</div><div class="sc"><div class="st-head"><h4>A working inference path</h4><span class="pill-ok">done</span></div><p class="dim" style="margin:0 0 8px">shipped</p><p class="muted" style="margin:0">One observable, eight parameters, a single forward pass, and a benchmark anyone can check. This is the released model. It recovers matter density and clustering amplitude well and is honest about the rest.</p></div></div><div class="step-row next"><div class="sn">02</div><div class="sc"><div class="st-head"><h4>Physics-complete training</h4><span class="pill-next">next</span></div><p class="dim" style="margin:0 0 8px">the constraint: an incomplete physics manifold</p><p class="muted" style="margin:0">Remove the constraint that the training set is mostly gravity-only. Without gas, feedback and AGN physics in the manifold, an anomaly score cannot tell new physics apart from physics the model was simply never shown. CAMELS is the dataset for this: thousands of hydrodynamic simulations varying matter density, clustering and four feedback parameters.</p></div></div><div class="step-row later"><div class="sn">03</div><div class="sc"><div class="st-head"><h4>Dynamic parameter space</h4><span class="pill-later">designed</span></div><p class="dim" style="margin:0 0 8px">the constraint: a fixed output list</p><p class="muted" style="margin:0">Remove the constraint that the output is hardwired to eight neurons with compiled-in ranges. The belief state is parameter-agnostic: it encodes the structure of the spectrum, not a fixed list of answers. The read-out head should take a specification at runtime, so a researcher asks for the parameters they care about, including ones the model was never trained to name.</p></div></div><div class="step-row blocked"><div class="sn">3B</div><div class="sc"><div class="st-head"><h4>Full posteriors, not error bars</h4><span class="pill-blocked">blocked</span></div><p class="dim" style="margin:0 0 8px">the constraint: Gaussian uncertainty</p><p class="muted" style="margin:0">Remove the constraint that the answer is a mean and a width. A normalising flow over the belief state gives a real posterior, compatible with the chain-analysis tools cosmologists already use. Blocked, and honestly so: a flow trained against a model whose uncertainties are a clamp constant would faithfully learn to reproduce a constant.</p></div></div><div class="step-row later"><div class="sn">04</div><div class="sc"><div class="st-head"><h4>One belief, many telescopes</h4><span class="pill-later">designed</span></div><p class="dim" style="margin:0 0 8px">the constraint: one instrument at a time</p><p class="muted" style="margin:0">Remove the constraint of a single observable. Only the encoder is specific to the power spectrum; the belief state and everything downstream are domain-agnostic. Add an encoder for the microwave background, another for gravitational-wave distances, and the same belief is updated by each in turn. Three instruments, one inference, one joint constraint.</p></div></div><div class="step-row later"><div class="sn">05</div><div class="sc"><div class="st-head"><h4>Anomaly as a research direction</h4><span class="pill-later">architecturally present</span></div><p class="dim" style="margin:0 0 8px">the constraint: you must know what to look for</p><p class="muted" style="margin:0">Remove the constraint that you can only test hypotheses someone already thought of. If a real observation leaves the constraint energy elevated after settling, its gradient points at the direction in belief space that would explain the residual, and that direction projects back onto specific scales in the spectrum. Not a detection: a pointer at where to look. It would need validating on an injected synthetic signal long before anyone trusted it on sky data.</p></div></div>"""
+    cards = """<div class="step-row bad"><div class="sn">00</div><div class="sc"><div class="st-head"><h4>Make the architecture actually train</h4><span class="pill-bad">blocked, and first</span></div><p class="dim" style="margin:0 0 8px">the defect</p><p class="muted" style="margin:0">Not in the original plan; the audit put it here. In the released model the encoder, proposal and refinement networks never trained, and the energy objective is unbounded below. Every rung above rests on this one. The diagnosis of what the training code reaches is done; the repair is not.</p></div></div><div class="step-row ok"><div class="sn">01</div><div class="sc"><div class="st-head"><h4>A working inference path</h4><span class="pill-ok">done</span></div><p class="dim" style="margin:0 0 8px">shipped</p><p class="muted" style="margin:0">One observable, eight parameters, a single forward pass, and a benchmark that reproduces. It recovers matter density and clustering amplitude on emulator spectra and does not recover the rest.</p></div></div><div class="step-row next"><div class="sn">02</div><div class="sc"><div class="st-head"><h4>Training data with hydrodynamic physics</h4><span class="pill-next">next</span></div><p class="dim" style="margin:0 0 8px">the constraint: mostly gravity-only emulator data</p><p class="muted" style="margin:0">Most of the training set has no gas, feedback or AGN physics, and the model fails on the one hydrodynamic slice it is tested against. CAMELS is one candidate source. More realistic training data would not by itself make any score interpretable as new physics.</p></div></div><div class="step-row later"><div class="sn">03</div><div class="sc"><div class="st-head"><h4>Parameters chosen at runtime</h4><span class="pill-later">design intent</span></div><p class="dim" style="margin:0 0 8px">the constraint: a fixed output list</p><p class="muted" style="margin:0">The output is eight fixed parameters with compiled-in ranges. The intention is a read-out that takes a parameter specification at runtime. Whether the belief state would carry that information is untested, since the modules that build it did not train.</p></div></div><div class="step-row blocked"><div class="sn">3B</div><div class="sc"><div class="st-head"><h4>Distributions, not point estimates</h4><span class="pill-blocked">blocked</span></div><p class="dim" style="margin:0 0 8px">the constraint: no usable uncertainty</p><p class="muted" style="margin:0">A posterior needs a stated observation model, noise and prior, and calibration checks. A density model trained against a network whose &sigma; is a constant would learn nothing useful, so this waits on the rungs below.</p></div></div><div class="step-row later"><div class="sn">04</div><div class="sc"><div class="st-head"><h4>More than one instrument</h4><span class="pill-later">design intent</span></div><p class="dim" style="margin:0 0 8px">the constraint: one observable</p><p class="muted" style="margin:0">The intention is a separate encoder per observable, each updating a shared belief. Nothing here shows a belief state can be shared that way; the encoder that would feed it never trained.</p></div></div><div class="step-row later"><div class="sn">05</div><div class="sc"><div class="st-head"><h4>Anomaly as a research direction</h4><span class="pill-later">not built</span></div><p class="dim" style="margin:0 0 8px">the constraint: you must know what to look for</p><p class="muted" style="margin:0">The idea is that an energy left high after refinement could point at scales the model cannot explain. The energy here is constant and its objective unbounded below, so no such signal exists. It would need calibrated false-alarm rates on injected signals long before anyone trusted it on sky data.</p></div></div>"""
     return f"""<section id="roadmap"><div class="wrap">
 {_shead("08", "Where it goes", "Each step removes one constraint.",
-        "The ladder below is the design plan for the model. It is built on a "
-        "method rather than an ambition: at every step, name the limitation a "
-        "human put in, and take it out.")}
+        "The ladder below is the design plan for the model, stated as intentions. "
+        "At every step it names one limitation someone built in and proposes "
+        "taking it out.")}
 <div class="sbody">
 
 <div class="panel accent">
 <p class="muted" style="margin:0 0 12px"><span class="lead-in">Planning by
-subtraction.</span> Most of what this model cannot do is not physics. It is a
-choice someone made and then compiled in. Eight outputs, fixed at build time.
-One instrument. An answer shaped like a mean and a width. Each of those is a
-limitation with a name, and a roadmap that names the limitation it deletes is
-one you can hold to account: a rung either gets removed or it visibly does not.</p>
+subtraction.</span> Most of what this model cannot do is a design choice rather
+than physics: eight outputs fixed at build time, one instrument, no distribution
+over answers. A roadmap that names the limitation each rung removes can be held to
+account: a rung is either removed or it visibly is not.</p>
 <p class="muted" style="margin:0"><span class="lead-in">What the audit
-changed.</span> This ladder used to start at 01. It now starts at 00, because a
-plan whose first four rungs sit on an architecture that never trained is not a
-plan. Making the thing train comes before extending it.</p>
+changed.</span> This ladder now starts at 00, because a plan whose first rungs sit
+on an architecture that never trained is not a plan. Making it train comes before
+extending it.</p>
 </div>
 
 <div class="steps">{cards}</div>
 
 <h3 class="display" style="font-size:21px; margin:46px 0 10px">What I want advice on</h3>
 <div class="panel"><ul style="margin:0">
-<li>Is iterative belief refinement worth pursuing at all once the gradient path
-works, or does an amortized posterior estimator reach the same place in one
-forward pass? There is no ablation, and that is the first thing a reviewer
-should ask for.</li>
-<li>How much of the weakness in expansion rate and dark energy is a real
-information limit of the power spectrum at two redshifts, and how much is
-training coverage? An earlier version of this project answered "physics" with
-some confidence and was wrong. I cannot separate them cleanly.</li>
+<li>Is iterative belief refinement worth pursuing at all once its gradient path
+works, or does a direct estimator reach the same place in one forward pass? There
+is no ablation, and that is the first thing a reviewer should ask for.</li>
+<li>How much of the weakness in expansion rate and dark energy is a limit of what
+the power spectrum at two redshifts contains, and how much is training coverage?
+An earlier version of this project answered "physics" with some confidence and
+was wrong. I cannot separate them cleanly.</li>
 <li>Would higher k, more redshifts, or explicit acoustic-scale features make the
 expansion rate identifiable, and what would a defensible experiment to settle
 that look like?</li>
@@ -1280,12 +1275,12 @@ yourself, and I would rather know which before spending on it.</li>
 </ul></div>
 
 <div class="panel accent" style="margin-top:22px">
-<p class="muted" style="margin:0">Nothing on this list is done. What exists is a
-working inference path, a benchmark anyone can check, a baseline that says how
-much of the result is really the network, and a precise account of which parts
-do not work. That is what the rest gets built on.</p>
+<p class="muted" style="margin:0">Nothing above rung 01 is done. What exists is an
+inference path, a benchmark that reproduces, a linear baseline, and an account of
+which parts do not work.</p>
 </div>
 </div></div></section>"""
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Downloads. Every example is downloadable in both formats so a visitor can take
@@ -1440,19 +1435,16 @@ drawing the pictures below, not the model.</p>
 <td class="num">100%</td></tr></table></div></div>"""
 
 
-# How each parameter behaves across the whole held-out set, in words. The
-# narrator is given this so it can tell a reader which of eight numbers to weigh,
-# on a spectrum that has no known answer and cannot be scored.
+# How each parameter behaves on the validation report, in words, using the same
+# verdict rule as the results table. The narrator is given this so it can tell a
+# reader which of eight numbers to weigh on a spectrum with no known answer.
+_VERDICTS = RESULTS["validation_report"]["verdicts"]
+_VARYING = RESULTS["validation_report"]["varying_only"]
 TRACK_RECORD = {
-    "Om": "recovers reliably", "s8": "recovers reliably",
-    "w0": "recovers about half the time", "h": "recovers about half the time",
-    "Ob": "not recovered", "ns": "not recovered",
-    "wa": "not recovered",
-    "mv": "not recovered, and barely distinguishable from noise once measured "
-          "only on data where it varies",
+    l: f"{_VERDICTS[l]}, R-squared {_VARYING[l]['r2']:.2f} on validation rows where it varies"
+    for l in PARAM_LABELS
 }
-TYPICAL_ERROR = ({l: REPORT["full_val_metrics_varying_only"][l]["rmse"]
-                  for l in PARAM_LABELS} if REPORT else {})
+TYPICAL_ERROR = {l: _VARYING[l]["rmse"] for l in PARAM_LABELS}
 
 
 def _narration(result, truth, pk0, source: str, report) -> str:
@@ -1556,8 +1548,9 @@ def _run(pk0, pk047, truth, source_label: str, selected=None) -> str:
               f'<a class="dl" href="/download/example/{selected}.npy">&#8595; as .npy</a></div>')
     truth_note = ("" if truth is None else
                   "<p class='dim' style='margin:12px 0 0'>The true values come "
-                  "from the simulation that produced this spectrum. The model "
-                  "never saw this example during training.</p>")
+                  "from the simulation that produced this spectrum. It is from "
+                  "the held-out split, which is made by row, so related spectra "
+                  "of the same cosmology in training are not ruled out.</p>")
 
     s = time.perf_counter()
     narration = _narration(result, truth, pk0, source_label, report)
@@ -1600,135 +1593,119 @@ def _demo(inner: str = "", selected=None) -> str:
 # Accuracy, baseline, audit, limitations
 # ─────────────────────────────────────────────────────────────────────────────
 
-# What a published analysis achieves on each parameter, so the error column has
-# something to be read against. Planck figures are the 2018 TT,TE,EE+lowE+lensing
-# 68% intervals; the dark-energy and neutrino figures are DESI DR2 combined with
-# CMB. These are constraints on real sky data with a covariance, against a
-# point-estimate scatter on noiseless emulator spectra, so the comparison is
-# generous to this model in every row.
-BENCHMARK_ERR = {
-    "Om": ("0.007", "Planck"),
-    "s8": ("0.006", "Planck"),
-    "h":  ("0.005", "Planck"),
-    "ns": ("0.004", "Planck"),
-    "Ob": ("0.0006", "Planck"),
-    "w0": ("0.055", "DESI DR2 + CMB + SN"),
-    "mv": ("&lt; 0.07 eV (95%)", "DESI DR2 + CMB"),
-    "wa": ("0.2", "DESI DR2 + CMB + SN"),
-}
+
 
 
 def _error_table() -> str:
-    """Typical error per parameter, measured where the parameter actually varies."""
-    vary = REPORT["full_val_metrics_varying_only"]
+    """Point-prediction error per parameter, on rows where the parameter varies."""
+    val = RESULTS["validation_report"]["varying_only"]
+    ben = RESULTS["benchmark"]["varying_only"]
     rows = ""
     for lbl in PARAM_LABELS:
         name, _ = PARAM_MEANING[lbl]
-        e = vary[lbl]["rmse"]
-        ref, who = BENCHMARK_ERR[lbl]
         unit = " eV" if lbl == "mv" else ""
         rows += (f'<tr><td>{PARAM_TEX[lbl]}</td>'
                  f'<td class="dim" style="white-space:nowrap">{html.escape(name)}</td>'
-                 f'<td class="num">{e:.4f}{unit}</td>'
-                 f'<td class="num dim">{ref}</td>'
-                 f'<td class="dim" style="white-space:nowrap">{who}</td></tr>')
+                 f'<td class="num">{val[lbl]["rmse"]:.4f}{unit}</td>'
+                 f'<td class="num dim">{val[lbl]["n"]:,}</td>'
+                 f'<td class="num">{ben[lbl]["rmse"]:.4f}{unit}</td>'
+                 f'<td class="num dim">{ben[lbl]["n"]:,}</td></tr>')
     return (f'<div class="panel"><div class="tw"><table>'
-            f'<tr><th>parameter</th><th></th><th class="num">typical error, this model</th>'
-            f'<th class="num">published constraint</th><th>from</th></tr>'
+            f'<tr><th>parameter</th><th></th>'
+            f'<th class="num">RMSE, validation report</th><th class="num">rows</th>'
+            f'<th class="num">RMSE, benchmark (reproduced)</th><th class="num">rows</th></tr>'
             f'{rows}</table></div></div>')
 
 
 def _results() -> str:
-    if not REPORT:
+    if not RESULTS:
         return ""
-    full, vary = REPORT["full_val_metrics"], REPORT["full_val_metrics_varying_only"]
-    bench = REPORT["benchmark"]["metrics"]
+    val = RESULTS["validation_report"]
+    full, vary = val["overall"], val["varying_only"]
+    bench = RESULTS["benchmark"]["overall"]
+    agree = RESULTS["benchmark"]["agreement"]
 
     def f(x):
         return "&ndash;" if x is None else f"{x:.3f}"
 
+    label = {"recovered": "<span class='good-t'>recovered</span>",
+             "partial": "<span class='flag'>partial</span>",
+             "not recovered": "<span class='bad-t'>not recovered</span>",
+             "undefined": "<span class='dim'>undefined</span>"}
     rows = ""
     for lbl in PARAM_LABELS:
         name, _ = PARAM_MEANING[lbl]
-        v = vary[lbl]["r2"]
-        verdict = ("<span class='good-t'>recovered</span>" if v and v > 0.7 else
-                   "<span class='flag'>partial</span>" if v and v > 0.25 else
-                   "<span class='bad-t'>not recovered</span>")
         rows += (f'<tr><td>{PARAM_TEX[lbl]}</td>'
                  f'<td class="dim" style="white-space:nowrap">{html.escape(name)}</td>'
                  f'<td class="num">{f(full[lbl]["r2"])}</td>'
-                 f'<td class="num">{f(v)}</td>'
+                 f'<td class="num">{f(vary[lbl]["r2"])}</td>'
                  f'<td class="num">{f(bench[lbl]["r2"])}</td>'
-                 f'<td>{verdict}</td></tr>')
+                 f'<td>{label[val["verdicts"][lbl]]}</td></tr>')
 
     src = ""
-    for name, blk in sorted(REPORT["per_source_metrics"].items(),
-                            key=lambda kv: -kv[1]["n"]):
+    for name, blk in sorted(val["per_source"].items(), key=lambda kv: -kv[1]["n"]):
         cells = "".join(f'<td class="num">{f(blk["metrics"][l]["r2"])}</td>'
                         for l in PARAM_LABELS)
-        flag = (' <span class="flag">known data defect</span>'
+        flag = (' <span class="flag">channels identical</span>'
                 if name == "bacco_multiz" else "")
         src += (f'<tr><td><code>{html.escape(name)}</code>{flag}</td>'
                 f'<td class="num">{blk["n"]:,}</td>{cells}</tr>')
     hdr = "".join(f'<th class="num">{PARAM_TEX[l]}</th>' for l in PARAM_LABELS)
 
+    multiz = RESULTS["benchmark"]["redshift_channel_checks"]["per_source"]["bacco_multiz"]
+    om = {n: b["metrics"]["Om"]["r2"] for n, b in val["per_source"].items()
+          if b["metrics"]["Om"]["r2"] is not None}
+    high = sorted(n for n, r in om.items() if r >= 0.97)
+    low = sorted((n for n, r in om.items() if r < 0.97), key=lambda n: om[n])
+    low_txt = ", ".join(f"<code>{n}</code> {om[n]:.2f}" for n in low)
+
     return f"""<section id="results"><div class="wrap">
 {_shead("04", "Accuracy", "How well it actually works.",
-        f"Measured on {REPORT['val_split']['n']:,} held-out spectra across "
-        f"{REPORT['val_split']['n_sources']} simulation suites, with the "
-        f"released code on a split that has no randomness in it.")}
+        "Point-prediction accuracy, from a saved validation report and from the "
+        "bundled benchmark reproduced in the audit.")}
 <div class="sbody">
+
+<p class="muted"><span class="lead-in">Two sources for every number.</span> The
+validation report covers {val["rows"]:,} rows of a deterministic held-out split
+across {val["source_ids_in_split"]} source ids. It is a saved report, and
+regenerating it needs the private master validation rows. The bundled benchmark is
+a 6,000-row subset that ships with the code; I reproduced it in the audit, and it
+agrees with an independent reproduction to {agree["max_abs_r2_diff_vs_independent_review"]:.1e}
+in R&sup2;.</p>
 
 {_error_table()}
 
-<p class="muted"><span class="lead-in">How it compares to a real survey.</span>
-The middle column is how far a typical answer sits from the truth, on the data
-where each parameter actually varies. The column beside it is what a survey
-achieves on the same quantity. This model is four to eight times worse on
-everything the CMB constrains well. Its error on neutrino mass is larger than the
-entire range that parameter is currently allowed to occupy, and its error on the
-expansion rate is about seventy percent of the whole Hubble tension, so it cannot
-speak to that question.</p>
-<p class="muted">The comparison is generous to this model on every row. A survey
-constraint is a marginalised posterior on noisy sky data; this is point-estimate
-scatter on noiseless emulator spectra with no window, no shot noise and no galaxy
-bias. That matters most for the two dark-energy rows, which look competitive and
-are not.</p>
+<p class="muted">These are point-prediction errors on noiseless emulator spectra.
+They are not comparable to survey constraints, which are posterior widths on real
+data with a noise model, and no such comparison is made here.</p>
 
-<h3 class="display" style="font-size:21px; margin:44px 0 10px">The same result as a ratio, and why it flatters</h3>
-<p class="muted">R&sup2; is what machine learning reports and what earlier
-material about this project led with. It is a ratio against the spread of the
-truth in whatever slice you sampled, so widening a prior raises it without
-changing the model at all. It is here for continuity, not because it means
-anything on its own.</p>
+<h3 class="display" style="font-size:21px; margin:44px 0 10px">The same result as R&sup2;</h3>
+<p class="muted">R&sup2; is a ratio against the spread of the truth in whatever
+rows are scored, so widening a parameter's range raises it without changing the
+model. The verdict uses R&sup2; on validation rows where the parameter varies:
+above 0.7 recovered, 0.25 to 0.7 partial, below 0.25 not recovered.</p>
 <div class="panel"><div class="tw"><table>
-<tr><th>parameter</th><th></th><th class="num">all test data</th>
-<th class="num">where it varies</th><th class="num">bundled benchmark</th>
+<tr><th>parameter</th><th></th><th class="num">all validation rows</th>
+<th class="num">where it varies</th><th class="num">benchmark, all rows</th>
 <th>verdict</th></tr>{rows}</table></div></div>
 
 <p class="muted"><span class="lead-in">The column to use is "where it
-varies".</span> R&sup2; measures how much of the spread in the truth the model
-explains, so on data where a parameter is held at a fixed value there is no
-spread and the score means nothing. That column restricts each parameter to the
-data that actually moves it. Neutrino mass is the whole argument in one row: 0.41
-across everything, 0.011 once measured only where it varies.</p>
-
-<p class="muted"><span class="lead-in">What reproduces.</span> The bundled
-6,000-case benchmark ships in the repository and regenerates its own column to
-about 1e-6 on any machine. The full-test column came from a private split and
-cannot be checked from outside; the benchmark lands within about 0.03 of it and
-narrows that gap rather than closing it.</p>
+varies".</span> On rows where a parameter is held fixed there is no spread and
+R&sup2; means nothing. Neutrino mass is the clearest case:
+{full["mv"]["r2"]:.2f} across all validation rows, {vary["mv"]["r2"]:.3f} on rows
+where it varies.</p>
 
 <h3 class="display" style="font-size:21px; margin:40px 0 10px">One broken suite drags every average down</h3>
 <div class="panel tight"><div class="tw"><table>
-<tr><th>simulation suite</th><th class="num">n</th>{hdr}</tr>{src}</table></div>
+<tr><th>source</th><th class="num">n</th>{hdr}</tr>{src}</table></div>
 <p class="dim" style="margin:12px 0 0"><code>&ndash;</code> means the parameter is
-held fixed in that suite, so R&sup2; is undefined rather than bad.</p></div>
-<p class="muted">One suite, <code>bacco_multiz</code>, is 15 percent of the test
-set and scores zero on everything, because its two redshift channels are
-identical copies of each other and carry no growth information. That is a defect
-in how the data was generated. On suites with sound data, matter density comes
-back at 0.98 to 0.99.</p>
+held fixed in that source, so R&sup2; is undefined rather than bad. Saved
+report.</p></div>
+<p class="muted">In <code>bacco_multiz</code> the two redshift channels are
+byte-identical in all {multiz["rows_z0_identical_to_z047"]:,} benchmark rows, so it
+carries no growth information and scores near zero on everything. Matter density
+comes back at 0.98 to 0.99 on {len(high)} of the {len(om)} sources, and lower on
+the rest: {low_txt}.</p>
 
 {_hydro_finding()}
 {_neutrino_finding()}
@@ -1737,18 +1714,13 @@ back at 0.98 to 0.99.</p>
 
 
 def _hydro_finding() -> str:
-    """
-    The cross-simulator test, which was run and failed without being named.
-
-    `camels_astrid_x` is the only slice of the evaluation drawn from a full
-    hydrodynamic simulation rather than an emulator, and the model scores worse
-    than a constant predictor on almost all of it. That is the generalisation
-    result, and it was published as an unremarked row.
-    """
-    a = REPORT["per_source_metrics"].get("camels_astrid_x")
+    """The one hydrodynamic slice, and the channel-order defect that confounds it."""
+    ps = RESULTS["validation_report"]["per_source"]
+    a = ps.get("camels_astrid_x")
     if not a:
         return ""
     m = a["metrics"]
+    gaps = RESULTS["benchmark"]["redshift_channel_checks"]["per_source"]
     rows = ""
     for lbl in PARAM_LABELS:
         r2, rm, sd = m[lbl]["r2"], m[lbl]["rmse"], m[lbl]["truth_std"]
@@ -1759,101 +1731,80 @@ def _hydro_finding() -> str:
                  f'<td class="num {cls}">{r2:.3f}</td>'
                  f'<td class="num">{rm:.4f}</td>'
                  f'<td class="num dim">{sd:.4f}</td></tr>')
-    worst = min((l for l in PARAM_LABELS if m[l]["r2"] is not None),
-                key=lambda l: m[l]["r2"])
+    varied = [l for l in PARAM_LABELS if m[l]["r2"] is not None]
+    below = [l for l in varied if m[l]["r2"] < 0]
+    worst = min(varied, key=lambda l: m[l]["r2"])
+    big = [g["median_lowk_log10_z0_over_z047"] for g in gaps.values()
+           if g["n"] > 100 and g["rows_z0_identical_to_z047"] == 0]
+    astrid = gaps["camels_astrid_x"]["median_lowk_log10_z0_over_z047"]
+    camb = gaps["camb_nl"]["median_lowk_log10_z0_over_z047"]
     return f"""
-<h3 class="display" style="font-size:21px; margin:44px 0 10px">Where it breaks: physics it was not shown</h3>
-<p class="muted">Almost all of the training corpus is emulator output &mdash;
-smooth fitted functions, fast to evaluate and free of gas physics. One slice of
-the evaluation, <code>camels_astrid_x</code>, is different: {a["n"]} spectra from
-a full hydrodynamic simulation, where gas cools, stars form and black holes push
-matter back out. <strong>The model scores worse than a constant predictor on six
-of the seven parameters this suite varies</strong>, including the {PARAM_MEANING[worst][0]} at
-R&sup2; {m[worst]["r2"]:.2f}.</p>
+<h3 class="display" style="font-size:21px; margin:44px 0 10px">Where it breaks: the one hydrodynamic slice</h3>
+<p class="muted">Most of the training data is emulator output. One slice of the
+evaluation, <code>camels_astrid_x</code>, is different: {a["n"]} spectra from a
+hydrodynamic simulation, where gas cools, stars form and feedback pushes matter
+back out. <strong>The model scores worse than predicting the mean on
+{len(below)} of the {len(varied)} parameters this source varies</strong>,
+including the {PARAM_MEANING[worst][0]} at R&sup2; {m[worst]["r2"]:.2f}. Saved
+report.</p>
 <div class="panel tight"><div class="tw"><table>
-<tr><th>parameter</th><th class="num">R&sup2;</th><th class="num">typical error</th>
+<tr><th>parameter</th><th class="num">R&sup2;</th><th class="num">RMSE</th>
 <th class="num">spread in the truth</th></tr>{rows}</table></div>
-<p class="dim" style="margin:12px 0 0">A negative R&sup2; means the model would
-have done better by ignoring the spectrum entirely and guessing the average every
-time.</p></div>
-<p class="muted"><span class="lead-in">What this does and does not
-show.</span> The obvious question about a model trained on many simulation suites
-is what happens on data unlike any of them, and this is the closest thing to that
-test in the release. It fails it. But I cannot yet call it a clean result about
-gas physics, for a reason worth stating.</p>
+<p class="dim" style="margin:12px 0 0">A negative R&sup2; means predicting the mean
+of the truth would have done better.</p></div>
 
 <div class="panel warn">
-<p class="muted" style="margin:0 0 12px"><span class="lead-in">A confound I
-found while testing this page.</span> This suite differs from the rest of the
-corpus in two ways at once, not one. It has the gas physics. It also has its two
-redshift channels stored in the opposite order to every other suite: the gap
-between them runs about &minus;0.32 in log&#8321;&#8320; here and about
-&#43;0.32 everywhere else, the same number with the sign flipped. The model was
-trained on one convention and is being handed the other.</p>
-<p class="muted" style="margin:0 0 12px">Two checks, and they disagree with each
-other. Swapping the rows back does not rescue the scores. And one other suite,
-<code>camb_nl</code>, is stored in the same reversed order and scores normally.
-Together those point at the gas physics rather than the ordering as the cause,
-but pointing is not measuring.</p>
-<p class="muted" style="margin:0">So the honest statement is narrower than the
-one I started to write: the model fails badly on the only slice of real
-hydrodynamics it is tested against, and I cannot yet say how much of that is the
-physics and how much is a data defect. Separating them needs a rerun on the full
-suite with the ordering corrected, which is now on the list.</p>
+<p class="muted" style="margin:0 0 12px"><span class="lead-in">A confound.</span>
+This source also stores its two redshift channels in the opposite order. On the
+benchmark rows, the median over k &lt; 0.2 h/Mpc of
+log&#8321;&#8320; P(z=0) &minus; log&#8321;&#8320; P(z=0.47) is {astrid:+.2f}
+here and {camb:+.2f} for <code>camb_nl</code>, the other reversed source, against
+{min(big):+.2f} to {max(big):+.2f} for the other sources with more than 100
+benchmark rows and two distinct channels.</p>
+<p class="muted" style="margin:0">So the failure has two candidate causes, gas
+physics the model was not trained on and a channel order it was not trained on,
+and they are not separated. Separating them needs the source corrected and
+evaluated again.</p>
 </div>
 
-<p class="muted">What survives either way: every number elsewhere on this page
-describes how well the model moves between emulators that resemble one another.
-Real survey data has the gas physics in it. That is a narrower claim than the
-headline table sounds.</p>"""
+<p class="muted">What holds either way: every other number on this page describes
+the model on emulator spectra that resemble its training data.</p>"""
 
 
 def _neutrino_finding() -> str:
-    """
-    The neutrino result is a baryon result, and the table already said so.
-
-    Two suites carry the same spread of neutrino masses and differ by whether a
-    baryonic correction is applied. Adding baryons doubles the error and pushes
-    the score below a constant predictor: the free-streaming suppression neutrinos
-    imprint and the suppression feedback imprints are the same shape, and nothing
-    in the labels tells them apart.
-    """
-    ps = REPORT["per_source_metrics"]
+    """Neutrino-mass recovery on the two sources that vary it, without a causal story."""
+    ps = RESULTS["validation_report"]["per_source"]
     a, b = ps.get("bacco_neutrino"), ps.get("bcemu_neutrino")
     if not (a and b):
         return ""
     am, bm = a["metrics"]["mv"], b["metrics"]["mv"]
     return f"""
-<h3 class="display" style="font-size:21px; margin:44px 0 10px">The neutrino number is really a baryon number</h3>
-<p class="muted">Two suites carry the same spread of neutrino masses and differ
-in one thing: whether a baryonic correction has been applied to the spectrum.</p>
+<h3 class="display" style="font-size:21px; margin:44px 0 10px">Neutrino mass depends on which emulator produced the spectrum</h3>
 <div class="panel tight"><div class="tw"><table>
-<tr><th>suite</th><th></th><th class="num">n</th>
-<th class="num">R&sup2; on neutrino mass</th><th class="num">typical error</th></tr>
-<tr><td><code>bacco_neutrino</code></td><td class="dim">gravity only</td>
+<tr><th>source</th><th></th><th class="num">n</th>
+<th class="num">R&sup2; on neutrino mass</th><th class="num">RMSE</th></tr>
+<tr><td><code>bacco_neutrino</code></td><td class="dim">BACCO emulator</td>
 <td class="num">{a["n"]:,}</td><td class="num">{am["r2"]:.3f}</td>
 <td class="num">{am["rmse"]:.3f} eV</td></tr>
-<tr><td><code>bcemu_neutrino</code></td><td class="dim">with baryonic feedback</td>
+<tr><td><code>bcemu_neutrino</code></td><td class="dim">BCemu emulator, with a baryonic-feedback model</td>
 <td class="num">{b["n"]:,}</td><td class="num bad-t">{bm["r2"]:.3f}</td>
 <td class="num">{bm["rmse"]:.3f} eV</td></tr>
 </table></div></div>
-<p class="muted">Adding the baryons more than doubles the error and takes the
-score below what guessing the average would give. That is not noise, and it is
-not a training bug. Massive neutrinos suppress small-scale structure because they
-stream out of it; feedback from black holes and supernovae suppresses small-scale
-structure because it pushes gas out of it. Over the range of scales this model
-reads, the two look alike, and nothing in its eight output slots distinguishes
-them. So the neutrino mass it reports is partly a statement about gas physics it
-was never asked to model, and the {am["r2"]:.2f} on the gravity-only suite is the
-optimistic half of a number that has a pessimistic half.</p>"""
+<p class="muted">Saved report. The same parameter comes back with R&sup2;
+{am["r2"]:.2f} from one emulator and {bm["r2"]:.2f} from the other. They are
+different emulators, so they differ in more than baryonic treatment. Baryonic
+feedback and massive neutrinos both suppress small-scale power, which is one
+possible reason; without spectra of matched cosmologies from both, this does not
+separate them.</p>"""
 
 
 def _baseline() -> str:
-    if not RIDGE:
+    g = RESULTS.get("ridge_baseline")
+    if not g:
         return ""
     rows = ""
     for lbl in PARAM_LABELS:
-        p = RIDGE["params"].get(lbl, {})
+        p = g["params"].get(lbl, {})
         if p.get("pinned") or p.get("ridge_r2") is None:
             continue
         r, c = p["ridge_r2"], p["cosmufr_r2"]
@@ -1864,103 +1815,101 @@ def _baseline() -> str:
                  f'<td class="dim" style="white-space:nowrap">{html.escape(name)}</td>'
                  f'<td class="num">{rb}</td><td class="num">{cb}</td>'
                  f'<td class="dim">{p["winner"]}</td></tr>')
-    wins, n = RIDGE.get("cosmufr_wins", 0), RIDGE.get("n_compared", 0)
     return f"""<section id="baseline"><div class="wrap">
 {_shead("05", "Baseline", "Is the big model earning its keep?",
         "The first question anyone should ask about a 136-million-parameter "
-        "network is whether a simple method does just as well. So here is the "
-        "simple method.")}
+        "network is whether a simple method does just as well.")}
 <div class="sbody">
-<p class="muted" style="max-width:66ch">Ridge regression on exactly the same 400
-input numbers, fitted on half the benchmark and scored on the other half.
-CosmUFR is scored on that same held-out half.</p>
+<p class="muted" style="max-width:66ch">Ridge regression on the same 400 input
+numbers, fitted on {g["n_fit"]:,} benchmark rows, with both models scored on the
+other {g["n_test"]:,}. Saved report, independently re-derived with the same
+seed.</p>
 <div class="panel"><div class="tw"><table>
 <tr><th>parameter</th><th></th><th class="num">ridge, 400 features</th>
-<th class="num">CosmUFR, 136M</th><th>winner</th></tr>{rows}</table></div></div>
-<p class="muted">CosmUFR is ahead on {wins} of {n}. A plain linear fit is
-competitive on matter density, and the reason is worth stating:
-that parameter is written into the height of the curve, and you do not need a
-large network to read it. The network earns its keep on the parameters that are
-subtle or that the training data barely varies, where it has learned a prior
-ridge cannot get from three thousand rows.</p>
-<p class="dim">The comparison is not symmetric. Ridge is fitted on 3,000 rows and
-CosmUFR trained on 84.5 million, so the network has a four-order-of-magnitude data
-advantage and still loses on matter density. One caveat runs the other way:
-ridge is fitted on rows from the same suites it is tested on, while CosmUFR has
-never seen any of these spectra. The comparison it does not yet make, and the
-one that would settle the architecture, is a small network of matched size trained
-directly on the same 400 inputs. Rerun with
-<code>python scripts/ridge_baseline.py</code>.</p>
+<th class="num">CosmUFR, 136M</th><th>higher</th></tr>{rows}</table></div></div>
+<p class="muted">CosmUFR is higher on {g["cosmufr_wins"]} of {g["n_compared"]}. A
+plain linear fit is competitive on matter density, which is written into the
+height of the curve and does not need a large network to read.</p>
+<p class="dim">The comparison is not symmetric in either direction. The network was
+trained on far more data: historical documentation gives 84.5 million rows. Ridge
+is fitted on rows from the same sources it is scored on, and the benchmark split
+is by row, so related spectra in the network's training data are not ruled out
+either. The comparison that would say whether the architecture earns its size, a
+direct network of matched size trained on the same inputs, has not been run.
+Rerun this one with <code>python scripts/ridge_baseline.py</code>.</p>
 </div></div></section>"""
 
 
-# How each part of the network came out of training, and in plain words what it
-# was supposed to be doing. The verdict column of the weight audit separates
-# "never got a gradient" from "got one"; it cannot tell whether a module that did
-# train landed anywhere useful, so that judgement is recorded here against the
-# measurement that supports it, listed in the section itself.
-MODULE_STORY = {
-    "obs_encoder":      ("Reads the spectrum", "untrained"),
-    "belief_proposal":  ("Forms the first guess", "untrained"),
-    "settling":         ("Refines the guess, 16 times", "untrained"),
-    "halo_head":        ("A side output, unused here", "untrained"),
-    "obs_energy_head":  ("Scores how well a guess fits the data", "degenerate"),
-    "constraint_head":  ("Scores how self-consistent a guess is", "degenerate"),
-    "dyn_energy_head":  ("Scores how far a guess has moved", "degenerate"),
-    "gen_head":         ("Redraws the spectrum from the guess", "degenerate"),
-    "unc_head":         ("Says how sure the model is", "degenerate"),
-    "param_head":       ("Turns the guess into eight numbers", "works"),
-    "obs_encoder_single":     ("Unused single-redshift path", "unused"),
-    "belief_proposal_seq":    ("Unused single-redshift path", "unused"),
+# What each module is for, and which of the audit's findings applies to it. The
+# grouping follows measurements in reports/results_v1.json: identity against Run 2's
+# checkpoint saved before any optimizer step, and whether the training step reaches
+# the module. Shares are parameter counts, not a measure of usefulness.
+MODULE_ROLE = {
+    "obs_encoder":         "Reads the spectrum",
+    "belief_proposal":     "Forms the first guess",
+    "settling":            "Refines the guess, 16 times",
+    "param_head":          "Turns the guess into eight numbers",
+    "unc_head":            "Says how sure the model is",
+    "gen_head":            "Redraws the spectrum from the guess",
+    "obs_energy_head":     "Scores how well a guess fits the data",
+    "dyn_energy_head":     "Scores how far a guess has moved",
+    "constraint_head":     "Scores a learned constraint on the guess",
+    "halo_head":           "A side output, not used for the parameters",
+    "obs_encoder_single":  "Sequential path, used only in training",
+    "belief_proposal_seq": "Sequential path, used only in training",
+    "attractor_bank":      "Stored reference beliefs, moving-average update",
+}
+
+GROUP_OF = {
+    "obs_encoder": "unchanged", "belief_proposal": "unchanged", "settling": "unchanged",
+    "obs_energy_head": "degenerate", "dyn_energy_head": "degenerate",
+    "constraint_head": "degenerate", "gen_head": "degenerate", "unc_head": "degenerate",
+    "param_head": "works",
 }
 
 GROUP_COPY = {
-    "untrained": (
-        "Never trained",
+    "unchanged": (
+        "Still at initialization",
         "bad",
-        "These received no gradient at any point, in any of the eight runs. They "
-        "hold the random numbers they were created with. This is not a matter of "
-        "training too little: a line of code disconnected them from the thing "
-        "being optimised, so nothing was ever asking them to change."),
+        "Bit-identical to Run 2's checkpoint saved before any optimizer step. In "
+        "the code that trained Run 4 the refinement loop detaches the belief at "
+        "every step and computes its step size and preconditioner without "
+        "gradients, so the training loss never reaches these modules."),
     "degenerate": (
-        "Trained, and stopped reading the input",
+        "Changed, and their outputs carry no information",
         "warn",
-        "These did receive a gradient and did change. What they settled on does "
-        "not depend on the spectrum. The three scoring heads return the same "
-        "number for wildly different inputs, the redraw head returns one value "
-        "at every scale, and the confidence head sits on the smallest number it "
-        "is allowed to emit."),
+        "These received gradients and changed. What they produce does not vary "
+        "usefully with the input: the energy is the same to float32 resolution "
+        "across spectra, the redrawn spectrum is one constant at every scale, and "
+        "the reported &sigma; sits at its clamp floor."),
     "works": (
-        "Trained, and works",
+        "Changed, and produces the answers",
         "good",
-        "Every number this model reports comes from here. It reads a fixed "
-        "random projection of the input, because everything upstream of it never "
-        "moved, and it still recovers matter density and clustering amplitude."),
+        "The eight reported parameters are computed here, from a belief that is a "
+        "fixed random function of the input because everything upstream of it is "
+        "unchanged. It still recovers matter density and clustering amplitude."),
 }
 
 
 def _module_groups():
-    """Group the audited modules by how they came out of training."""
-    out = {"untrained": [], "degenerate": [], "works": [], "unused": []}
-    total = sum(m.get("n_params", 0) for m in AUDIT.modules.values()) or N_PARAMS
-    for name, m in AUDIT.modules.items():
-        job, group = MODULE_STORY.get(name, ("", "degenerate"))
-        if not m["on_default_path"]:
-            group = "unused"
-        out[group].append((name, job, MODULE_SHARE.get(name, 0.0)))
+    """Group modules by the audit's measurements; the rest is listed under the table."""
+    out = {"unchanged": [], "degenerate": [], "works": [], "other": []}
+    for name, e in RESULTS["modules"]["by_module"].items():
+        out[GROUP_OF.get(name, "other")].append(
+            (name, MODULE_ROLE.get(name, ""), e["share_percent"]))
     return out
 
 
 def _share(group: str) -> float:
-    """What fraction of the parameters came out of training in one state."""
+    """Share of all parameters held by one group."""
     return sum(share for _, _, share in _module_groups()[group])
 
 
 def _outcome_table() -> str:
-    """The three outcomes, with what each part was for and how big it is."""
+    """The three outcomes, with what each part is for and how big it is."""
     groups = _module_groups()
     body = ""
-    for key in ("untrained", "degenerate", "works"):
+    for key in ("unchanged", "degenerate", "works"):
         rows = groups[key]
         if not rows:
             continue
@@ -1973,92 +1922,123 @@ def _outcome_table() -> str:
             for n, job, sh in sorted(rows, key=lambda r: -r[2]))
         body += (f'<div class="outcome {tone}">'
                  f'<div class="oc-head"><h4>{title}</h4>'
-                 f'<span class="oc-share">{share:.1f}% of the network</span></div>'
+                 f'<span class="oc-share">{share:.1f}% of parameters</span></div>'
                  f'<p class="muted">{gloss}</p>'
                  f'<div class="tw"><table class="oc-tbl">{cells}</table></div>'
                  f'</div>')
-    named = sum(sh for g in ("untrained", "degenerate", "works")
-                for _, _, sh in groups[g])
-    rest = 100.0 - named
-    foot = (f'<p class="dim" style="margin:6px 0 0">The remaining {rest:.0f}% is '
-            f'a second, unused copy of the reading and guessing stages, built for '
-            f'single-redshift input and never called here, plus a bank of stored '
-            f'reference states. Both trained. Neither affects an answer.</p>')
+    other = groups["other"]
+    names = ", ".join(f"<code>{html.escape(n)}</code>"
+                      for n, _, _ in sorted(other, key=lambda r: -r[2]))
+    rest = sum(sh for _, _, sh in other)
+    halo = RESULTS["modules"]["halo_head_weight_rescale_run2_to_run4"]
+    foot = (f'<p class="dim" style="margin:6px 0 0">The remaining {rest:.0f}% '
+            f'({names}) does not produce the parameters. The sequential path trains '
+            f'only through a training-time consistency loss; the reference bank is '
+            f'updated by moving average; <code>halo_head</code> receives no gradient, '
+            f'but its weights were uniformly rescaled by {min(halo):.3f} between Run 2 '
+            f'and Run 4, for a reason not traced.</p>')
     return f'<div class="outcomes">{body}</div>{foot}'
 
 
 def _audit() -> str:
     img = _png(F.fig_weight_audit(AUDIT))
+    by = RESULTS["modules"]["by_module"]
+    later = RESULTS["later_training_code_saved_log"]["median_grad_norm"]
+    shift = RESULTS["energy"]["loss_change_for_shift_minus_1000"]["run4_launch_384ad38__run4_weights"]
+    traj = RESULTS["energy"]["run4_training_log"]["trajectory"]
+    e_first, e_last = traj[0], traj[-1]
+    bench_e = list(RESULTS["energy"]["benchmark_energy_values"]["rows"].values())
+
+    def ident(n):
+        x = by[n]["run2_initial_vs_run4"]
+        return f'{x["identical"]}/{x["shared"]}'
+
+    def reach(n, key):
+        x = by[n]["training_step"][key]
+        return f'{x["grad_batches"]}/{x["of"]}'
+
     return f"""<section id="what-i-observed"><div class="wrap">
-{_shead("02", "What I observed", "The core of the design never trained.",
-        "I trained the model eight times, then opened the finished weights "
-        "and checked, part by part, what had actually changed. What follows is "
-        "the evidence in six parts: the weights, the eight runs, the accuracy "
-        "against real surveys, where it breaks, a linear baseline, and the "
+{_shead("02", "What I observed", "The core of the design is still at its initial values.",
+        "I compared the released weights with earlier checkpoints, including one "
+        "saved before any optimizer step, and ran the training code itself to see "
+        "which modules its loss can reach. What follows is the evidence: the "
+        "weights, the runs, accuracy, where it breaks, a linear baseline, and the "
         "argument I got wrong.")}
 <div class="sbody">
 
 <div class="panel bad">
 <p class="muted" style="margin:0 0 12px"><span class="lead-in">The finding in one
-paragraph.</span> The idea this model is built on is that it should reach its
-answer gradually: read the spectrum, form a rough guess about the universe, then
-sharpen that guess sixteen times before answering. The finished weights show the
-sharpening never happened, and could not have. The parts that were supposed to do
-it are still holding the random numbers they were created with, in every one of
-the eight runs. What produces the answers is a single small read-out layer at the
-very end.</p>
-<p class="muted" style="margin:0">Most of the network did train, which is why
-this took months to see. Reading the finished weights part by part separates the
-two.</p>
+paragraph.</span> The idea this model is built on is that it reaches its answer
+gradually: read the spectrum, form a rough guess about the universe, then sharpen
+that guess sixteen times. In the released checkpoint the modules meant to do that
+are bit-identical to their state before training, and the code that trained it
+never passes them a gradient. The eight parameters are computed by a small
+read-out head from a fixed random function of the input.</p>
+<p class="muted" style="margin:0">Most of the other parameters did change during
+training, which is why this was not visible in the loss curves.</p>
 </div>
 
 <h3 class="display" style="font-size:21px; margin:44px 0 14px">What happened to each part</h3>
 {_outcome_table()}
 
-<p class="muted"><span class="lead-in">So both of these are true.</span> Training
-ran, eight times, and moved most of the model. And the three parts the whole
-design rests on never moved at all, because they were disconnected from what was
-being optimised. Running training more times could not have fixed that. Nothing
-was asking them to change.</p>
-
 <h3 class="display" style="font-size:21px; margin:48px 0 10px">How I know</h3>
-<p class="muted">Training sets every bias in the network to exactly zero before
-it starts, and the first instruction to reach one moves it off zero. Eighty-four
-of them are still bit-exactly <code>0.0</code> after forty epochs. A second,
-independent check: I compared the finished weights against a checkpoint from
-thirty-five epochs earlier, and in those three parts all 204 numbers are
-identical to the last digit, while the read-out layers had moved by 66 to 79
-percent.</p>
+<p class="muted"><span class="lead-in">Against the starting point.</span> Run 2
+saved a checkpoint before its first optimizer step. Against it, the released
+checkpoint's encoder matches in {ident("obs_encoder")} tensors, the belief proposal
+in {ident("belief_proposal")} and the refinement networks in {ident("settling")},
+bit for bit, while the read-out heads changed. Run 4 was warm-started through
+Run 3 from Run 2, so this covers Runs 2 to 4.</p>
+<p class="muted"><span class="lead-in">In the training code.</span> I ran the code
+that trained Run 4 for twenty diagnostic steps from the released weights, and
+twenty from a fresh initialization. The encoder received a gradient in
+{reach("obs_encoder", "run4_code_run4_weights")} steps, the proposal in
+{reach("belief_proposal", "run4_code_run4_weights")} and the refinement networks in
+{reach("settling", "run4_code_run4_weights")}; the read-out head in
+{reach("param_head", "run4_code_run4_weights")}. The loop detaches the belief at
+every step and computes its step size and preconditioner without gradients. Later
+training code reconnects the encoder ({reach("obs_encoder", "current_code_kbp4")}),
+and the proposal only when every refinement step is retained
+({reach("belief_proposal", "current_code_kbp16")}); the refinement networks stay at
+{reach("settling", "current_code_kbp16")}. In a saved log from a later smoke run
+with that code, the encoder's median gradient was {later["encoder"]:.1e} against
+{later["param_head"]:.1f} for the read-out head.</p>
+<p class="muted"><span class="lead-in">A clue, not a proof.</span> Every Linear
+bias is initialised to zero, and the figure below counts modules whose biases are
+all still zero. That is consistent with no update, but <code>halo_head</code> also
+has all-zero biases and its weights changed. The comparison and the training-step
+diagnosis above are the evidence.</p>
 {_figblock("weight_audit", img)}
 
-<p class="muted"><span class="lead-in">There are two faults here, not one.</span>
-The first is a code defect with a known repair: one line in the refinement loop
-cuts the loop loose from everything that produced it. The second is not
-repairable that way. The refinement was meant to work by rolling downhill on a
-score the model learns for itself, and that score did train, on to a value it
-returns for every spectrum alike. Reconnecting the first fault gives the loop
-nothing to roll towards.</p>
+<p class="muted"><span class="lead-in">A second, separate problem.</span> The
+energy the refinement is meant to descend is trained with a loss that adds the
+mean energy to a contrastive term depending only on differences. Lowering every
+energy by the same constant therefore lowers the loss one-for-one: a diagnostic
+shift of 1,000 changed it by {shift:,.1f}. Run 4's logged energy loss went from
+{e_first["train_L_energy"]:,.0f} at epoch {e_first["epoch"]} to
+{e_last["train_L_energy"]:,.0f} by epoch {e_last["epoch"]}, and on six different
+benchmark spectra the energy is {bench_e[0]:,.3f} to within one float32 step. That
+is consistent with the unbounded direction; the log does not show which term
+produced the value. Reconnecting the gradient path alone would leave this in
+place.</p>
 
 <div class="panel accent">
 <p class="muted" style="margin:0 0 12px"><span class="lead-in">What I do not
-know, and would like to.</span> A score trained this way has no reason to put its
-lowest point at the right cosmology, because it is never shown one. It is trained
-to be low wherever the network already landed. I can see why that permits a
-constant, and I have not worked out what the objective should be instead.</p>
+know, and would like to.</span> What the energy should be trained to do instead:
+bounded below, tied to something observable, and never shown the answer at
+inference. I do not have a formulation I believe in.</p>
 <p class="muted" style="margin:0 0 12px">Underneath that sits the question the
-whole project was built to ask and has not asked: <strong style="color:var(--fg)">does
+project was built to ask and has not asked: <strong style="color:var(--fg)">does
 refining an answer over several steps buy anything a single pass does not?</strong>
-Nothing in this release is evidence either way. I have a design that assumed it
-and never ran, which is not the same as a result.</p>
+Nothing in this release is evidence either way.</p>
 <p class="muted" style="margin:0">Both are open, and the second is the one worth
-someone else's opinion before I spend another training run on it.</p>
+someone else's opinion before another training run.</p>
 </div>
 
-<p class="dim">All of this reproduces from the released weights in about a
-minute, with <code>cosmufr.weight_audit(model)</code> and
-<code>cosmufr.settling_report(...)</code>. The test that would have caught it on
-day one now ships in the repository, written so that it fails loudly if a future
-checkpoint ever fixes the fault.</p>
+<p class="dim">The bias audit and the settling measurement run from the released
+weights with <code>cosmufr.weight_audit(model)</code> and
+<code>cosmufr.settling_report(...)</code>. The checkpoint comparison and the
+training-step diagnosis need the historical checkpoints and training source,
+which are not public.</p>
 </div></div></section>"""
 
 
@@ -2079,15 +2059,13 @@ CEILING_CLAIM = [
 
 def _ceiling() -> str:
     """
-    The retraction, with the arithmetic that undoes it.
-
-    Two independent objections, and either is fatal on its own: the numbers
-    exceed the bound they were supposed to sit under, and the bound was never a
-    Fisher calculation in the first place.
+    The retraction: the arithmetic that undoes the claimed bound, and the reason it
+    was never a bound in the first place.
     """
     claimed = sum(w * cap for _, _, w, cap, _ in CEILING_CLAIM)
     scored = sum(w * got for _, _, w, _, got in CEILING_CLAIM)
     over = [l for l, _, _, cap, got in CEILING_CLAIM if got > cap]
+    weak_weight = sum(w for l, _, w, _, _ in CEILING_CLAIM if l in ("h", "wa", "w0"))
 
     rows = ""
     for lbl, name, w, cap, got in CEILING_CLAIM:
@@ -2098,20 +2076,18 @@ def _ceiling() -> str:
                  f'<td class="num bad-t">{got:.3f}</td></tr>')
 
     return f"""<section id="ceiling"><div class="wrap">
-{_shead("06", "What I got wrong", "I claimed a physics ceiling. There was no ceiling.",
-        "The audit above is a defect I found in the code. This one is a mistake "
-        "I made in reasoning, asserted in writing to people who had asked me "
-        "nothing, and defended for nine days. It is the more instructive of the "
-        "two.")}
+{_shead("06", "What I got wrong", "I claimed a physics ceiling. It was never derived.",
+        "The audit above is a defect in the code. This one is a mistake in "
+        "reasoning, asserted in writing and defended for nine days.")}
 <div class="sbody">
 
 <div class="panel accent">
 <p class="muted" style="margin:0"><span class="lead-in">The claim.</span> Six of
-the eight parameters would not improve. I ran seven architectural variants
-trying to lift them and every one failed. I then wrote that a Fisher analysis
-put the maximum recoverable score at {claimed:.2f}, that my model had plateaued
-there, and that the limit therefore lay in the observable rather than in
-anything I had built. I called it the result I was most confident in.</p>
+the eight parameters would not improve across several architectural variants. I
+then wrote that a Fisher analysis put the maximum recoverable score at
+{claimed:.2f}, that my model had plateaued there, and that the limit therefore lay
+in the observable rather than in anything I had built. I called it the result I
+was most confident in.</p>
 </div>
 
 <h3 class="display" style="font-size:21px; margin:40px 0 10px">The arithmetic does not hold</h3>
@@ -2120,42 +2096,35 @@ anything I had built. I called it the result I was most confident in.</p>
 <th class="num">claimed maximum</th><th class="num">what I reported scoring</th></tr>
 {rows}</table></div>
 <p class="dim" style="margin:12px 0 0">Weighted, the claimed maximum is
-{claimed:.3f} and the reported scores come to {scored:.3f}.</p></div>
+{claimed:.3f} and the scores reported at the time come to {scored:.3f}.</p></div>
 
-<p class="muted">A model cannot exceed a bound it is sitting under. Mine did, by
-{(scored - claimed) / claimed * 100:.0f} percent &mdash; and not through one
-outlier. <strong>All {len(over)} of the 8 parameters individually score above
-their own claimed maximum.</strong> A limit every one of your measurements
-violates is not a limit. It is a set of numbers picked to sit just underneath
-the numbers they were meant to explain.</p>
+<p class="muted">A model cannot exceed a bound it is sitting under. The scores I
+reported did, by {(scored - claimed) / claimed * 100:.0f} percent, and not through
+one outlier: <strong>all {len(over)} of the 8 parameters individually score above
+their own claimed maximum.</strong></p>
 
-<h3 class="display" style="font-size:21px; margin:40px 0 10px">And it was never a Fisher calculation</h3>
-<p class="muted">This is the objection that survives even if the arithmetic had
-worked. A Fisher forecast needs the derivative of the observable with respect to
-each parameter <em>and a data covariance</em>: a survey volume, a shot-noise
-term, a binning. Every row I train and test on is a noiseless evaluation of a
-deterministic emulator. The covariance is zero, so the information is unbounded
-and no such ceiling can exist. A score short of perfect on noiseless data is
-always a limit of the estimator, never of the information.</p>
-
-<p class="muted">What I actually did was take a weighted average of my own scores
-with weights I had chosen myself, and recover the number my model had scored.
-Then I attached the word <em>proving</em> to it. The three parameters I could not
-recover carry sixty percent of that weight, so the whole quantity is dominated by
-the terms whose assumed maxima were the free parameters of the argument.</p>
+<h3 class="display" style="font-size:21px; margin:40px 0 10px">And it was never derived for a stated observation model</h3>
+<p class="muted">A bound on how well parameters can be recovered needs an
+observation model: what is measured, with what noise and covariance, over what
+distribution of parameters. The earlier bound specified none of these. What I had
+actually computed was a weighted average of my own scores, with weights I chose,
+and the three parameters I could not recover carried {weak_weight * 100:.0f}
+percent of that weight. The bound is withdrawn. Whether these parameters are
+identifiable from two noiseless spectra over this range of scales, and to what
+accuracy, remains to be investigated.</p>
 
 <div class="panel accent">
 <p class="muted" style="margin:0 0 12px"><span class="lead-in">What it cost, and
-why it is here.</span> Nine days and seven training runs spent defending a number
-that meant nothing, when the calculation that would have settled it &mdash;
-finite-difference one emulator, look at the singular values of the resulting
-Jacobian &mdash; takes an afternoon and needs no GPU at all. The plateau I kept
-hitting was the severed gradient path above, which had been there the
-whole time.</p>
+why it is here.</span> Nine days of runs spent defending a number that had never
+been derived, when a calculation that could have tested local identifiability
+&mdash; finite-difference an emulator over the training range and look at the
+singular values of the resulting Jacobian &mdash; needs no GPU at all. What
+actually limited those runs is not established: the saved evaluations were too
+noisy to tell them apart.</p>
 <p class="muted" style="margin:0">I found this because the audit forced me back
 through the reasoning, not because I checked whether my own calculation was the
-thing I had called it. That is the part worth remembering: the defect was found
-by a test, and the bad reasoning was found only by accident.</p>
+thing I had called it. The defect was found by a test; the bad reasoning was found
+only by accident.</p>
 </div>
 </div></div></section>"""
 
@@ -2164,9 +2133,9 @@ def _the_code() -> str:
     """Install it, run it, check it, get in touch."""
     return f"""<section id="the-code"><div class="wrap">
 {_shead("05", "The code", "Everything needed to check this.",
-        "Everything on this page comes from a public repository and a public "
-        "checkpoint. The test set ships with the code, so you can regenerate "
-        "every number here without asking anyone for anything.")}
+        "The code, the checkpoint and the benchmark are public, and the benchmark "
+        "numbers regenerate from them. The validation report and the audit "
+        "diagnostics need data and checkpoints that are not public, and say so.")}
 <div class="sbody">
 
 <div class="two-up">
@@ -2195,10 +2164,11 @@ accepted, on 200 bins over k in [0.1, 4.5] h/Mpc at z = 0 and z = 0.47.</p>
 
 <div class="two-up" style="margin-top:14px">
 <div class="panel">
-<h4 class="ch">Regenerate every number on this page</h4>
+<h4 class="ch">Regenerate the benchmark table</h4>
 <pre><code>python -m cosmufr.reproduce</code></pre>
-<p class="dim" style="margin:12px 0 0">Rebuilds the accuracy tables from the
-bundled 6,000-case benchmark, to about one part in a million.</p>
+<p class="dim" style="margin:12px 0 0">Rebuilds the benchmark table and the defect
+diagnostics from the bundled 6,000 rows. In the audit it agreed with an
+independent reproduction within 1e-5 in R&sup2;.</p>
 </div>
 <div class="panel">
 <h4 class="ch">Check the audit for yourself</h4>
@@ -2207,14 +2177,15 @@ m = cosmufr.load_model()
 print(cosmufr.weight_audit(m).table())
 print(cosmufr.settling_report(m, pk0, pk047))</code></pre>
 <p class="dim" style="margin:12px 0 0">About seven seconds. The first prints
-which parts of the network ever trained.</p>
+which modules still have all-zero biases, which is a clue rather than proof; the
+second measures how far the refinement moves the belief.</p>
 </div>
 </div>
 
 <h3 class="display" style="font-size:21px; margin:46px 0 12px">Where everything lives</h3>
 <div class="panel tight"><div class="tw"><table>
 <tr><th>what</th><th>where</th></tr>
-<tr><td>Code, benchmark, tests, full evaluation report</td>
+<tr><td>Code, benchmark, tests, saved reports and the results file</td>
     <td><a href="{REPO_URL}">{REPO_URL.replace("https://", "")}</a></td></tr>
 <tr><td>Weights and model card</td>
     <td><a href="{HF_URL}">{HF_URL.replace("https://", "")}</a></td></tr>
@@ -2226,10 +2197,10 @@ which parts of the network ever trained.</p>
 <div class="panel accent" style="margin-top:24px">
 <p class="muted" style="margin:0 0 10px"><span class="lead-in">Get in
 touch.</span> CosmUFR is built and released by Aaditya Rajgor, open under MIT. The two questions I would most value an outside view on:
-whether gradual refinement is worth pursuing at all once the code fault is
-repaired, or whether a single-pass estimator reaches the same place; and how much
-of the weakness on the expansion rate is a real limit of this measurement rather
-than a limit of the training data.</p>
+whether gradual refinement is worth pursuing at all once it can train, or whether
+a single-pass estimator reaches the same place; and how much of the weakness on
+the expansion rate is a limit of what this measurement contains rather than a
+limit of the training data.</p>
 <p class="muted" style="margin:0"><a href="mailto:{CONTACT_EMAIL}">{CONTACT_EMAIL}</a></p>
 </div>
 </div></div></section>"""
@@ -2237,54 +2208,53 @@ than a limit of the training data.</p>
 
 def _limits() -> str:
     items = [
-        ("The belief pipeline never trained.",
-         "The encoder, the belief proposal and the settling core sit at "
-         "initialization. See what I observed, above."),
-        ("The energy landscape is flat.",
-         "The energy heads collapsed to an input-independent constant, so there "
-         "is nothing for the refinement to descend."),
-        ("Reported uncertainties are meaningless.",
-         "&sigma; = 0.1 for six of eight parameters on every input, because the "
-         "uncertainty head sits at its clamp floor. Do not use them."),
+        ("The refinement core is at initialization.",
+         "The encoder, the belief proposal and the refinement networks are "
+         "bit-identical to Run 2's pre-training state, and the code that trained "
+         "this checkpoint gives them no gradient. See what I observed, above."),
+        ("The energy objective is unbounded below.",
+         "It lowers one-for-one under a constant downward shift of every energy, and "
+         "on the benchmark the energy is constant to float32 resolution across "
+         "inputs and refinement steps."),
+        ("Reported uncertainties carry no information.",
+         "&sigma; = 0.1 for six of eight parameters on every benchmark input, "
+         "because the uncertainty head sits at its clamp floor. Do not use them."),
         ("The P(k) reconstruction is a constant.",
-         "The generative head returns the same value at every scale, for every "
-         "input, and for a random belief vector."),
+         "The generative head returns the same value at every scale and for every "
+         "input."),
         ("Neutrino mass is not recovered.",
-         "R&sup2; = 0.011 measured only on data where it varies."),
-        ("The anomaly score is not usable.",
-         "The energy subsystem diverged; E_con sits around &minus;4.6e5."),
-        ("Two redshifts only.",
-         "Multi-redshift generalization is unvalidated, and that corpus has a "
-         "documented ordering defect."),
-        ("The headline table is not externally reproducible.",
-         "It was measured on a private split. The bundled benchmark narrows that "
-         "gap to about 0.03 rather than closing it."),
-        ("No ablation.",
-         "There is a linear baseline now, but no ablation of the architecture's "
-         "own components, and no network of matched size trained directly on the "
-         "same inputs. Until that exists, nothing here shows the architecture "
-         "earns its size."),
-        ("It fails on hydrodynamic physics, for reasons not yet separated.",
-         "On the one evaluation slice drawn from a full hydrodynamic simulation "
-         "it scores worse than a constant predictor on six of the seven parameters that suite varies. "
-         "That slice also has a redshift-ordering defect, so the physics and the "
-         "defect are confounded and neither is measured."),
-        ("Two suites have their redshift channels reversed.",
-         "<code>camb_nl</code> and <code>camels_astrid_x</code> store z=0.47 "
-         "where every other suite stores z=0, which is 39 of the 6,000 bundled "
-         "test spectra. The demo warns when it sees this. Found in September "
-         "2026, after the model shipped."),
-        ("Neutrino mass is confounded with baryonic feedback.",
-         "The two suppress small-scale structure in a similar way over the "
-         "scales this model reads, and nothing in the labels separates them."),
+         "R&sup2; = 0.011 on validation rows where it varies, and recovery differs "
+         "sharply between two emulators."),
+        ("It fails on the one hydrodynamic slice.",
+         "That slice also has a redshift-channel-order defect, so the two causes "
+         "are not separated."),
+        ("Redshift channels are reversed in two bundled sources.",
+         "<code>camb_nl</code> and <code>camels_astrid_x</code> store the channels "
+         "in the opposite order, 39 of the 6,000 benchmark rows. The demo warns "
+         "when it sees this."),
+        ("The rebuilt master arrays have a separately reported ordering problem.",
+         "An independent review sampled 648 rows of the June rebuild and found "
+         "<code>camb_nl</code> and <code>camb_wa_grid</code> with the opposite of "
+         "the expected growth ordering. That is a sample, not a source-wide audit, "
+         "and no released model used the rebuild."),
         ("The input is not an observable.",
-         "Emulator matter power spectra, with no survey window, no shot noise, "
-         "no mask and no galaxy bias. There is no path from this to survey data "
-         "that does not go through all four."),
-        ("There is no noise model anywhere.",
-         "Every row is a deterministic emulator evaluation, so there is no "
-         "covariance, no likelihood, and nothing that would make a posterior "
-         "width a physical quantity."),
+         "Emulator matter power spectra, with no survey window, shot noise, mask, "
+         "galaxy bias, noise model or covariance."),
+        ("The split is by row, not by cosmology.",
+         "Related spectra of the same base cosmology can sit in both training and "
+         "evaluation; leakage has not been ruled out."),
+        ("Two redshifts only.",
+         "Multi-redshift generalization is unvalidated."),
+        ("The validation table is not externally reproducible.",
+         "It needs the private master validation rows. The bundled benchmark "
+         "reproduces within 1e-5."),
+        ("No ablation and no matched direct network.",
+         "There is a linear baseline, but until a direct network of matched size is "
+         "trained on the same inputs, nothing here shows the architecture earns "
+         "its size."),
+        ("Historical cross-run comparisons are unreliable.",
+         "Epoch-to-epoch evaluation noise was as large as the differences being "
+         "compared."),
     ]
     lis = "".join(f"<li><strong>{t}</strong> {d}</li>" for t, d in items)
     return f"""<section id="limits"><div class="wrap">
@@ -2299,8 +2269,8 @@ def _footer() -> str:
     """Closes the page. The links and the ask live in the code section."""
     return f"""<footer><div class="wrap">
 <p class="muted" style="margin:0 0 10px">CosmUFR &middot; Aaditya Rajgor &middot;
-released open under MIT. Every number on this page is measured, and the faults
-are listed before the results.</p>
+released open under MIT. Numbers on this page are labelled reproduced, saved
+report or diagnostic, and the faults are listed before the results.</p>
 <p><a href="{REPO_URL}">{REPO_URL}</a> &middot; <a href="{HF_URL}">{HF_URL}</a></p>
 <p class="dim hashline" style="margin-top:14px">Checkpoint sha256 {SHA256}</p>
 </div></footer>"""
@@ -2318,10 +2288,11 @@ def _full(demo_inner: str = "", selected=None) -> str:
     are evidence rather than argument now sit inside the question they answer.
     """
     did = _chapter(
-        "01", "What I did", "Teach a network to run the physics backwards.",
-        "Working out which universe produced a measurement takes days of "
-        "compute. I tried to replace that with a network that has seen enough "
-        "simulated universes to recognise one on sight.",
+        "01", "What I did", "Train a network to map a spectrum to its parameters.",
+        "Inferring parameters from a measurement usually means generating and "
+        "comparing many candidate universes. I tried training a network on "
+        "emulator-generated spectra to map a spectrum to its parameters in one "
+        "pass.",
         _sub(_idea(), "The problem, and the bet"),
         _sub(_input_section(), "What the model reads",
              "Four hundred numbers go in. Everything the model will ever know "
@@ -2329,7 +2300,7 @@ def _full(demo_inner: str = "", selected=None) -> str:
 
     observed = _extend(
         _audit(),
-        _sub(_evolution(), "Eight runs, and what each one taught"),
+        _sub(_evolution(), "The training runs, and what each one taught"),
         _sub(_results(), "How accurate it actually is"),
         _sub(_baseline(), "Is the large model earning its size?"),
         _sub(_ceiling(), "And my explanation for all of it was wrong"))
@@ -2337,8 +2308,8 @@ def _full(demo_inner: str = "", selected=None) -> str:
     conclude = _chapter(
         "03", "What I conclude", "A working baseline, and an untested idea.",
         "The interesting claim has not been tested, because the mechanism that "
-        "would have tested it never ran. What exists is a fast, checkable, "
-        "openly flawed starting point.",
+        "would test it did not operate. What exists is a checkable starting "
+        "point with its faults named.",
         _conclusion(),
         _sub(_roadmap(), "The longer plan, one constraint at a time"),
         _sub(_limits(), "Everything known to be wrong with this"))
@@ -2423,5 +2394,9 @@ def health():
         "parameters": N_PARAMS,
         "benchmark_n": len(BENCH),
         "untrained_on_default_path": AUDIT.untrained_on_default_path,
+        "untrained_on_default_path_note": ("modules whose Linear biases are all "
+                                           "zero, a clue rather than proof; see "
+                                           "reports/results_v1.json for the "
+                                           "checkpoint comparison"),
         "code": REPO_URL, "weights": HF_URL,
     })
